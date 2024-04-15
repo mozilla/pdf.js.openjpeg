@@ -23,11 +23,15 @@
 #define JP2_MAGIC 0x0A870A0D
 #define J2K_CODESTREAM_MAGIC 0x51FF4FFF
 
-#define likely(x) __builtin_expect(!!(x), 1) 
-#define unlikely(x) __builtin_expect(!!(x), 0) 
+#define likely(x) __builtin_expect(!!(x), 1)
+#define unlikely(x) __builtin_expect(!!(x), 0)
 
 extern void jsPrintError(const char *);
 extern void jsPrintWarning(const char *);
+extern void setImageData(OPJ_UINT8 *, OPJ_SIZE_T);
+extern OPJ_UINT8 *getDataPtr();
+extern OPJ_SIZE_T getDataSize();
+extern void freeData();
 
 static void error_callback(const char *msg, void *client_data) {
   (void)client_data;
@@ -43,12 +47,14 @@ static void quiet_callback(const char *msg, void *client_data) {
   (void)client_data;
 }
 
-int EMSCRIPTEN_KEEPALIVE jp2_decode(void *data, int data_size,
-                                    OPJ_UINT8 **p_image, int *p_image_size) {
+int EMSCRIPTEN_KEEPALIVE jp2_decode() {
   opj_dparameters_t parameters;
   opj_codec_t *l_codec = NULL;
   opj_image_t *image = NULL;
   opj_stream_t *l_stream = NULL;
+
+  OPJ_UINT8 *data = getDataPtr();
+  OPJ_SIZE_T data_size = getDataSize();
 
   OPJ_UINT32 *int32data = (OPJ_UINT32 *)data;
   if (int32data[0] == JP2_MAGIC || (int32data[0] == JP2_RFC3745_MAGIC_0 &&
@@ -59,6 +65,7 @@ int EMSCRIPTEN_KEEPALIVE jp2_decode(void *data, int data_size,
     l_codec = opj_create_decompress(OPJ_CODEC_J2K);
   } else {
     jsPrintError("Unknown format");
+    freeData();
     return 1;
   }
 
@@ -80,6 +87,7 @@ int EMSCRIPTEN_KEEPALIVE jp2_decode(void *data, int data_size,
     jsPrintError("Failed to setup the decoder");
     opj_stream_destroy(l_stream);
     opj_destroy_codec(l_codec);
+    freeData();
     return 1;
   }
 
@@ -89,16 +97,18 @@ int EMSCRIPTEN_KEEPALIVE jp2_decode(void *data, int data_size,
     opj_stream_destroy(l_stream);
     opj_destroy_codec(l_codec);
     opj_image_destroy(image);
+    freeData();
     return 1;
   }
 
   /* decode the image */
   if (unlikely(!opj_decode(l_codec, l_stream, image) ||
-      !opj_end_decompress(l_codec, l_stream))) {
+               !opj_end_decompress(l_codec, l_stream))) {
     jsPrintError("Failed to decode the image");
     opj_destroy_codec(l_codec);
     opj_stream_destroy(l_stream);
     opj_image_destroy(image);
+    freeData();
     return 1;
   }
 
@@ -114,11 +124,11 @@ int EMSCRIPTEN_KEEPALIVE jp2_decode(void *data, int data_size,
 
   opj_stream_destroy(l_stream);
   opj_destroy_codec(l_codec);
+  freeData();
 
   OPJ_SIZE_T nb_pixels = image->x1 * image->y1;
-  *p_image_size = nb_pixels * image->numcomps;
-  OPJ_UINT8 *out = (OPJ_UINT8 *)malloc(*p_image_size);
-  *p_image = out;
+  OPJ_SIZE_T image_size = nb_pixels * image->numcomps;
+  OPJ_UINT8 *out = (OPJ_UINT8 *)malloc(image_size);
 
   switch (image->numcomps) {
   case 1:
@@ -161,6 +171,9 @@ int EMSCRIPTEN_KEEPALIVE jp2_decode(void *data, int data_size,
     }
   }
   }
+
+  setImageData(out, image_size);
+  free(out);
 
   opj_image_destroy(image);
 

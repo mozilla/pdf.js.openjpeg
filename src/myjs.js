@@ -14,12 +14,27 @@
  */
 
 mergeInto(LibraryManager.library, {
-    jsPrintError: function (message_ptr) {
-        const message = UTF8ToString(message_ptr);
-        console.error(`OpenJPEG: ${message}`);
-    },
-    jsPrintWarning: function (message_ptr) {
-        const message = UTF8ToString(message_ptr);
-        console.warn(`OpenJPEG: ${message}`);
-    },
+  jsPrintError: function (message_ptr) {
+    const message = UTF8ToString(message_ptr);
+    console.error(`OpenJPEG: ${message}`);
+  },
+  jsPrintWarning: function (message_ptr) {
+    const message = UTF8ToString(message_ptr);
+    console.warn(`OpenJPEG: ${message}`);
+  },
+  setImageData: function (array_ptr, array_size) {
+    Module.imageData = new Uint8ClampedArray(
+      Module.HEAPU8.subarray(array_ptr, array_ptr + array_size)
+    );
+  },
+  getDataPtr: function () {
+    return Module.dataToDecode.ptr;
+  },
+  getDataSize: function () {
+    return Module.dataToDecode.size;
+  },
+  freeData: function () {
+    Module._free(Module.dataToDecode.ptr);
+    delete Module.dataToDecode;
+  },
 });
