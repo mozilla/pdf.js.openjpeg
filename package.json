@@ -1,0 +1,11 @@
+{
+  "name": "pdf.js.openjpeg",
+  "version": "0.0.1",
+  "devDependencies": {
+    "argparse": "^2.0.1",
+    "eslint": "^9.0.0",
+    "eslint-plugin-prettier": "^5.1.3",
+    "prettier": "^3.2.5",
+    "eslint-config-prettier": "^9.1.0"
+  }
+}
