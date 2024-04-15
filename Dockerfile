@@ -3,7 +3,7 @@ FROM emscripten/emsdk:latest
 WORKDIR /tmp
 
 ENV OPENJPEG_GIT_HASH e8b9d9274a0aee998402d967f65dadd919c31eca
-ENV OUTPUT /tmp
+ENV OUTPUT /js
 ENV OPENJPEG /tmp/openjpeg
 ENV INPUT /code/src
 
@@ -19,7 +19,7 @@ RUN git config --global user.email "you@example.com" && \
 RUN cd openjpeg && \
     mkdir build && cd build && \
     emcmake cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF && \
-    emmake make -j4 && \
+    emmake make openjp2 && \
     emcc --clear-cache
 
 CMD /code/compile.sh

@@ -33,7 +33,6 @@ emcc -o ${OUTPUT}/openjpeg.js \
         -DNDEBUG \
         -flto \
         -O3 \
-        --closure 1 \
         --js-library ${INPUT}/myjs.js
 
 # -s ASSERTIONS=2 -s SAFE_HEAP=1 -s STACK_OVERFLOW_CHECK=2 -O0 -g4 \
