@@ -2,7 +2,7 @@ FROM emscripten/emsdk:latest
 
 WORKDIR /tmp
 
-ENV OPENJPEG_GIT_HASH e8b9d9274a0aee998402d967f65dadd919c31eca
+ENV OPENJPEG_GIT_HASH 39e8c50a2f9bdcf36810ee3d41bcbf1cc78968ae
 ENV OUTPUT /js
 ENV OPENJPEG /tmp/openjpeg
 ENV INPUT /code/src
