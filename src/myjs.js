@@ -27,14 +27,4 @@ mergeInto(LibraryManager.library, {
       Module.HEAPU8.subarray(array_ptr, array_ptr + array_size)
     );
   },
-  getDataPtr: function () {
-    return Module.dataToDecode.ptr;
-  },
-  getDataSize: function () {
-    return Module.dataToDecode.size;
-  },
-  freeData: function () {
-    Module._free(Module.dataToDecode.ptr);
-    delete Module.dataToDecode;
-  },
 });

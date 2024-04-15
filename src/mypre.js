@@ -15,9 +15,17 @@
 
 "use strict";
 
-Module.setDataToDecode = function (bytes) {
+Module.decode = function (bytes) {
   const size = bytes.length;
   const ptr = Module._malloc(size);
   Module.HEAPU8.set(bytes, ptr);
-  Module.dataToDecode = { ptr, size };
+  const ret = Module._jp2_decode(ptr, size);
+  Module._free(ptr);
+  if (ret) {
+    return null;
+  }
+  const { imageData } = Module;
+  Module.imageData = null;
+
+  return imageData;
 };
