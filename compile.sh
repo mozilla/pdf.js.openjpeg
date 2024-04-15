@@ -13,7 +13,6 @@ emcc -o ${OUTPUT}/openjpeg.js \
         -I${OPENJPEG}/src/bin/jp2/ \
         -I${OPENJPEG_BUILD}/src/lib/openjp2 \
         -I${OPENJPEG_BUILD}/src/bin/common \
-        -DCONFIG_VERSION="\"1.0.0\"" \
         -s ALLOW_MEMORY_GROWTH=1 \
         -s WASM=1 \
         -s MODULARIZE=1 \
