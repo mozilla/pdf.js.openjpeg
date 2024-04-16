@@ -15,11 +15,11 @@
 
 "use strict";
 
-Module.decode = function (bytes) {
+Module.decode = function (bytes, ignoreColorSpace) {
   const size = bytes.length;
   const ptr = Module._malloc(size);
   Module.HEAPU8.set(bytes, ptr);
-  const ret = Module._jp2_decode(ptr, size);
+  const ret = Module._jp2_decode(ptr, size, ignoreColorSpace ? 1 : 0);
   Module._free(ptr);
   if (ret) {
     return null;

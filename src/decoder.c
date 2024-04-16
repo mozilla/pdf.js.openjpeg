@@ -26,6 +26,8 @@
 #define likely(x) __builtin_expect(!!(x), 1)
 #define unlikely(x) __builtin_expect(!!(x), 0)
 
+// #define PDFJS_DEBUG
+
 extern void jsPrintError(const char *);
 extern void jsPrintWarning(const char *);
 extern void setImageData(OPJ_UINT8 *, OPJ_SIZE_T);
@@ -44,7 +46,8 @@ static void quiet_callback(const char *msg, void *client_data) {
   (void)client_data;
 }
 
-int EMSCRIPTEN_KEEPALIVE jp2_decode(OPJ_UINT8 *data, OPJ_SIZE_T data_size) {
+int EMSCRIPTEN_KEEPALIVE jp2_decode(OPJ_UINT8 *data, OPJ_SIZE_T data_size,
+                                    OPJ_UINT32 ignoreColorSpace) {
   opj_dparameters_t parameters;
   opj_codec_t *l_codec = NULL;
   opj_image_t *image = NULL;
@@ -92,6 +95,32 @@ int EMSCRIPTEN_KEEPALIVE jp2_decode(OPJ_UINT8 *data, OPJ_SIZE_T data_size) {
     return 1;
   }
 
+  OPJ_UINT32 numcomps = image->numcomps;
+
+  if (ignoreColorSpace) {
+    OPJ_UINT32 *p_comp_indices =
+        (OPJ_UINT32 *)malloc(numcomps * sizeof(OPJ_UINT32));
+    for (OPJ_UINT32 i = 0; i < numcomps; i++) {
+      p_comp_indices[i] = i;
+    }
+    if (unlikely(!opj_set_decoded_components(l_codec, numcomps, p_comp_indices,
+                                             OPJ_FALSE))) {
+      jsPrintError("Failed to set the decoded components");
+      opj_stream_destroy(l_stream);
+      opj_destroy_codec(l_codec);
+      opj_image_destroy(image);
+      free(p_comp_indices);
+      return 1;
+    }
+    free(p_comp_indices);
+  }
+
+#ifdef PDFJS_DEBUG
+  printf("image X %d\n", image->x1);
+  printf("image Y %d\n", image->y1);
+  printf("image numcomps %d\n", numcomps);
+#endif
+
   /* decode the image */
   if (unlikely(!opj_decode(l_codec, l_stream, image) ||
                !opj_end_decompress(l_codec, l_stream))) {
@@ -102,36 +131,41 @@ int EMSCRIPTEN_KEEPALIVE jp2_decode(OPJ_UINT8 *data, OPJ_SIZE_T data_size) {
     return 1;
   }
 
-  /*printf("image X %d\n", image->x1);
-  printf("image Y %d\n", image->y1);
+#ifdef PDFJS_DEBUG
   printf("image numcomps %d\n", image->numcomps);
   printf("image colorspace %d\n", image->color_space);
-  printf("prec=%d, bpp=%d, sgnd=%d\n", image->comps[0].prec,
-  image->comps[0].bpp, image->comps[0].sgnd); printf("prec=%d, bpp=%d,
-  sgnd=%d\n", image->comps[1].prec, image->comps[1].bpp, image->comps[1].sgnd);
-  printf("prec=%d, bpp=%d, sgnd=%d\n", image->comps[2].prec,
-  image->comps[2].bpp, image->comps[2].sgnd);*/
+  printf("prec=%d, bpp=%d, sgnd=%d w=%d h=%d\n", image->comps[0].prec,
+         image->comps[0].bpp, image->comps[0].sgnd, image->comps[0].w,
+         image->comps[0].h);
+  printf("prec=%d, bpp=%d, sgnd=%d w=%d h=%d\n", image->comps[1].prec,
+         image->comps[1].bpp, image->comps[1].sgnd, image->comps[1].w,
+         image->comps[1].h);
+  printf("prec=%d, bpp=%d, sgnd=%d w=%d h=%d\n", image->comps[2].prec,
+         image->comps[2].bpp, image->comps[2].sgnd, image->comps[2].w,
+         image->comps[2].h);
+#endif
 
   opj_stream_destroy(l_stream);
   opj_destroy_codec(l_codec);
 
+  numcomps = image->numcomps;
   OPJ_SIZE_T nb_pixels = image->x1 * image->y1;
-  OPJ_SIZE_T image_size = nb_pixels * image->numcomps;
+  OPJ_SIZE_T image_size = nb_pixels * numcomps;
   OPJ_UINT8 *out = (OPJ_UINT8 *)malloc(image_size);
 
-  switch (image->numcomps) {
-  case 1:
-    scale_component(&image->comps[0], 8);
+  if (!ignoreColorSpace) {
+    for (int i = 0; i < numcomps; i++) {
+      scale_component(&image->comps[i], 8);
+    }
+  }
 
+  switch (numcomps) {
+  case 1:
     for (OPJ_SIZE_T i = 0; i < nb_pixels; i++) {
       out[i] = image->comps[0].data[i];
     }
     break;
   case 3: {
-    scale_component(&image->comps[0], 8);
-    scale_component(&image->comps[1], 8);
-    scale_component(&image->comps[2], 8);
-
     OPJ_INT32 *red = image->comps[0].data;
     OPJ_INT32 *green = image->comps[1].data;
     OPJ_INT32 *blue = image->comps[2].data;
@@ -143,11 +177,6 @@ int EMSCRIPTEN_KEEPALIVE jp2_decode(OPJ_UINT8 *data, OPJ_SIZE_T data_size) {
     break;
   }
   case 4: {
-    scale_component(&image->comps[0], 8);
-    scale_component(&image->comps[1], 8);
-    scale_component(&image->comps[2], 8);
-    scale_component(&image->comps[3], 8);
-
     OPJ_INT32 *red = image->comps[0].data;
     OPJ_INT32 *green = image->comps[1].data;
     OPJ_INT32 *blue = image->comps[2].data;
@@ -161,10 +190,9 @@ int EMSCRIPTEN_KEEPALIVE jp2_decode(OPJ_UINT8 *data, OPJ_SIZE_T data_size) {
   }
   }
 
+  opj_image_destroy(image);
   setImageData(out, image_size);
   free(out);
-
-  opj_image_destroy(image);
 
   return 0;
 }
