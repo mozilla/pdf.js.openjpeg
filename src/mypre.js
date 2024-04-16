@@ -22,7 +22,12 @@ Module.decode = function (bytes, ignoreColorSpace) {
   const ret = Module._jp2_decode(ptr, size, ignoreColorSpace ? 1 : 0);
   Module._free(ptr);
   if (ret) {
-    return null;
+    const { errorMessages } = Module;
+    if (errorMessages) {
+      delete Module.errorMessages;
+      return errorMessages;
+    }
+    return "Unknown error";
   }
   const { imageData } = Module;
   Module.imageData = null;

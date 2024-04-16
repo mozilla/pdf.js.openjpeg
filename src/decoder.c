@@ -28,13 +28,13 @@
 
 // #define PDFJS_DEBUG
 
-extern void jsPrintError(const char *);
 extern void jsPrintWarning(const char *);
 extern void setImageData(OPJ_UINT8 *, OPJ_SIZE_T);
+extern void storeErrorMessage(const char *);
 
 static void error_callback(const char *msg, void *client_data) {
   (void)client_data;
-  jsPrintError(msg);
+  storeErrorMessage(msg);
 }
 static void warning_callback(const char *msg, void *client_data) {
   (void)client_data;
@@ -61,7 +61,7 @@ int EMSCRIPTEN_KEEPALIVE jp2_decode(OPJ_UINT8 *data, OPJ_SIZE_T data_size,
   } else if (int32data[0] == J2K_CODESTREAM_MAGIC) {
     l_codec = opj_create_decompress(OPJ_CODEC_J2K);
   } else {
-    jsPrintError("Unknown format");
+    storeErrorMessage("Unknown format");
     return 1;
   }
 
@@ -80,7 +80,7 @@ int EMSCRIPTEN_KEEPALIVE jp2_decode(OPJ_UINT8 *data, OPJ_SIZE_T data_size,
 
   /* Setup the decoder decoding parameters using user parameters */
   if (unlikely(!opj_setup_decoder(l_codec, &parameters))) {
-    jsPrintError("Failed to setup the decoder");
+    storeErrorMessage("Failed to setup the decoder");
     opj_stream_destroy(l_stream);
     opj_destroy_codec(l_codec);
     return 1;
@@ -88,7 +88,7 @@ int EMSCRIPTEN_KEEPALIVE jp2_decode(OPJ_UINT8 *data, OPJ_SIZE_T data_size,
 
   /* Read the main header of the codestream and if necessary the JP2 boxes*/
   if (unlikely(!opj_read_header(l_stream, l_codec, &image))) {
-    jsPrintError("Failed to read the header");
+    storeErrorMessage("Failed to read the header");
     opj_stream_destroy(l_stream);
     opj_destroy_codec(l_codec);
     opj_image_destroy(image);
@@ -105,7 +105,7 @@ int EMSCRIPTEN_KEEPALIVE jp2_decode(OPJ_UINT8 *data, OPJ_SIZE_T data_size,
     }
     if (unlikely(!opj_set_decoded_components(l_codec, numcomps, p_comp_indices,
                                              OPJ_FALSE))) {
-      jsPrintError("Failed to set the decoded components");
+      storeErrorMessage("Failed to set the decoded components");
       opj_stream_destroy(l_stream);
       opj_destroy_codec(l_codec);
       opj_image_destroy(image);
@@ -124,7 +124,7 @@ int EMSCRIPTEN_KEEPALIVE jp2_decode(OPJ_UINT8 *data, OPJ_SIZE_T data_size,
   /* decode the image */
   if (unlikely(!opj_decode(l_codec, l_stream, image) ||
                !opj_end_decompress(l_codec, l_stream))) {
-    jsPrintError("Failed to decode the image");
+    storeErrorMessage("Failed to decode the image");
     opj_destroy_codec(l_codec);
     opj_stream_destroy(l_stream);
     opj_image_destroy(image);

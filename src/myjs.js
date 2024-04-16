@@ -14,10 +14,6 @@
  */
 
 mergeInto(LibraryManager.library, {
-  jsPrintError: function (message_ptr) {
-    const message = UTF8ToString(message_ptr);
-    console.error(`OpenJPEG: ${message}`);
-  },
   jsPrintWarning: function (message_ptr) {
     const message = UTF8ToString(message_ptr);
     console.warn(`OpenJPEG: ${message}`);
@@ -26,5 +22,13 @@ mergeInto(LibraryManager.library, {
     Module.imageData = new Uint8ClampedArray(
       Module.HEAPU8.subarray(array_ptr, array_ptr + array_size)
     );
+  },
+  storeErrorMessage: function (message_ptr) {
+    const message = UTF8ToString(message_ptr);
+    if (!Module.errorMessages) {
+      Module.errorMessages = message;
+    } else {
+      Module.errorMessages += "\n" + message;
+    }
   },
 });
