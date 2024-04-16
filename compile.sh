@@ -21,7 +21,7 @@ emcc -o ${OUTPUT}/openjpeg.js \
         -s EXPORT_ES6=1 \
         -s USE_ES6_IMPORT_META=1 \
         -s SINGLE_FILE=1 \
-        -s ENVIRONMENT='worker' \
+        -s ENVIRONMENT='web' \
         -s ERROR_ON_UNDEFINED_SYMBOLS=1 \
         -s NO_FILESYSTEM=1 \
         -s NO_EXIT_RUNTIME=1 \
