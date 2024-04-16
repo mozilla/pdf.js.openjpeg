@@ -1,6 +1,6 @@
 # pdf.js.openjpeg
 
-Provide a decoder for JPEG2000 images.
+Provide a decoder for JPEG2000 images based on the [OpenJPEG](https://github.com/uclouvain/openjpeg) library.
 
 ## Build
 
