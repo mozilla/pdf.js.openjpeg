@@ -18,7 +18,12 @@ RUN git config --global user.email "you@example.com" && \
 
 RUN cd openjpeg && \
     mkdir build && cd build && \
-    emcmake cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF && \
+    emcmake cmake .. \
+    -DCMAKE_C_FLAGS="-O3 -msimd128 -msse" \
+    -DBUILD_SHARED_LIBS=OFF \
+    -DBUILD_STATIC_LIBS=ON \
+    -DOPJ_USE_THREAD=OFF \
+    -DCMAKE_BUILD_TYPE=Release && \
     emmake make openjp2 && \
     emcc --clear-cache
 

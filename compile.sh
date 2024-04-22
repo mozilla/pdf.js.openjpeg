@@ -32,6 +32,7 @@ emcc -o ${OUTPUT}/openjpeg.js \
         -DNDEBUG \
         -flto \
         -O3 \
+        -msimd128 -msse \
         --js-library ${INPUT}/myjs.js \
         --pre-js ${INPUT}/mypre.js \
 
