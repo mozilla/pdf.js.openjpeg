@@ -16,7 +16,7 @@
 mergeInto(LibraryManager.library, {
   jsPrintWarning: function (message_ptr) {
     const message = UTF8ToString(message_ptr);
-    console.warn(`OpenJPEG: ${message}`);
+    (Module.warn || console.warn)(`OpenJPEG: ${message}`);
   },
   setImageData: function (array_ptr, array_size) {
     Module.imageData = new Uint8ClampedArray(
