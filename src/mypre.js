@@ -13,8 +13,6 @@
  * limitations under the License.
  */
 
-"use strict";
-
 Module.decode = function (bytes, ignoreColorSpace) {
   const size = bytes.length;
   const ptr = Module._malloc(size);
