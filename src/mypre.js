@@ -13,11 +13,20 @@
  * limitations under the License.
  */
 
-Module.decode = function (bytes, ignoreColorSpace) {
+Module.decode = function (
+  bytes,
+  { numComponents = 4, isIndexedColormap = false, smaskInData = false }
+) {
   const size = bytes.length;
   const ptr = Module._malloc(size);
   Module.HEAPU8.set(bytes, ptr);
-  const ret = Module._jp2_decode(ptr, size, ignoreColorSpace ? 1 : 0);
+  const ret = Module._jp2_decode(
+    ptr,
+    size,
+    numComponents > 0 ? numComponents : 0,
+    !!isIndexedColormap,
+    !!smaskInData
+  );
   Module._free(ptr);
   if (ret) {
     const { errorMessages } = Module;

@@ -8,9 +8,11 @@ OPENJPEG_BUILD=${OPENJPEG_BUILD:=${OPENJPEG}/build}
 emcc -o ${OUTPUT}/openjpeg.js \
         ${OPENJPEG_BUILD}/bin/libopenjp2.a \
         ${OPENJPEG}/src/bin/jp2/convert.c \
+        ${OPENJPEG}/src/bin/common/color.c \
         ${INPUT}/decoder.c \
         -I${OPENJPEG}/src/lib/openjp2 \
         -I${OPENJPEG}/src/bin/jp2/ \
+        -I${OPENJPEG}/src/bin/common/ \
         -I${OPENJPEG_BUILD}/src/lib/openjp2 \
         -I${OPENJPEG_BUILD}/src/bin/common \
         -s ALLOW_MEMORY_GROWTH=1 \

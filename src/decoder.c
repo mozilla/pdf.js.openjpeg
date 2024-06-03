@@ -13,9 +13,12 @@
  * limitations under the License.
  */
 
+// clang-format off
 #include "emscripten.h"
 #include "openjpeg.h"
+#include "color.h"
 #include "convert.h"
+// clang-format on
 
 #define JP2_RFC3745_MAGIC_0 0x0C000000
 #define JP2_RFC3745_MAGIC_1 0x2020506A
@@ -47,7 +50,9 @@ static void quiet_callback(const char *msg, void *client_data) {
 }
 
 int EMSCRIPTEN_KEEPALIVE jp2_decode(OPJ_UINT8 *data, OPJ_SIZE_T data_size,
-                                    OPJ_UINT32 ignoreColorSpace) {
+                                    OPJ_UINT32 pdf_numcomps,
+                                    OPJ_BOOL pdf_is_indexed_colormap,
+                                    OPJ_BOOL pdf_smaks_in_data) {
   opj_dparameters_t parameters;
   opj_codec_t *l_codec = NULL;
   opj_image_t *image = NULL;
@@ -70,6 +75,9 @@ int EMSCRIPTEN_KEEPALIVE jp2_decode(OPJ_UINT8 *data, OPJ_SIZE_T data_size,
   opj_set_error_handler(l_codec, error_callback, 00);
 
   opj_set_default_decoder_parameters(&parameters);
+  if (pdf_is_indexed_colormap) {
+    parameters.flags |= OPJ_DPARAMETERS_IGNORE_PCLR_CMAP_CDEF_FLAG;
+  }
 
   // set stream
   opj_buffer_info_t buffer_info;
@@ -95,30 +103,12 @@ int EMSCRIPTEN_KEEPALIVE jp2_decode(OPJ_UINT8 *data, OPJ_SIZE_T data_size,
     return 1;
   }
 
-  OPJ_UINT32 numcomps = image->numcomps;
-
-  if (ignoreColorSpace) {
-    OPJ_UINT32 *p_comp_indices =
-        (OPJ_UINT32 *)malloc(numcomps * sizeof(OPJ_UINT32));
-    for (OPJ_UINT32 i = 0; i < numcomps; i++) {
-      p_comp_indices[i] = i;
-    }
-    if (unlikely(!opj_set_decoded_components(l_codec, numcomps, p_comp_indices,
-                                             OPJ_FALSE))) {
-      storeErrorMessage("Failed to set the decoded components");
-      opj_stream_destroy(l_stream);
-      opj_destroy_codec(l_codec);
-      opj_image_destroy(image);
-      free(p_comp_indices);
-      return 1;
-    }
-    free(p_comp_indices);
-  }
-
 #ifdef PDFJS_DEBUG
+  printf("Arguments: numcomps: %d, is_indexed: %d, smask_in_data: %d\n",
+         pdf_numcomps, pdf_is_indexed_colormap, pdf_smaks_in_data);
   printf("image X %d\n", image->x1);
   printf("image Y %d\n", image->y1);
-  printf("image numcomps %d\n", numcomps);
+  printf("image numcomps %d\n", image->numcomps);
 #endif
 
   /* decode the image */
@@ -133,7 +123,29 @@ int EMSCRIPTEN_KEEPALIVE jp2_decode(OPJ_UINT8 *data, OPJ_SIZE_T data_size,
 
 #ifdef PDFJS_DEBUG
   printf("image numcomps %d\n", image->numcomps);
-  printf("image colorspace %d\n", image->color_space);
+  switch (image->color_space) {
+  case OPJ_CLRSPC_UNKNOWN:
+    printf("image colorspace unknown\n");
+    break;
+  case OPJ_CLRSPC_UNSPECIFIED:
+    printf("image colorspace unspecified\n");
+    break;
+  case OPJ_CLRSPC_SRGB:
+    printf("image colorspace sRGB\n");
+    break;
+  case OPJ_CLRSPC_GRAY:
+    printf("image colorspace gray\n");
+    break;
+  case OPJ_CLRSPC_SYCC:
+    printf("image colorspace sycc\n");
+    break;
+  case OPJ_CLRSPC_EYCC:
+    printf("image colorspace eycc\n");
+    break;
+  case OPJ_CLRSPC_CMYK:
+    printf("image colorspace cmyk\n");
+    break;
+  }
   printf("prec=%d, bpp=%d, sgnd=%d w=%d h=%d\n", image->comps[0].prec,
          image->comps[0].bpp, image->comps[0].sgnd, image->comps[0].w,
          image->comps[0].h);
@@ -148,46 +160,112 @@ int EMSCRIPTEN_KEEPALIVE jp2_decode(OPJ_UINT8 *data, OPJ_SIZE_T data_size,
   opj_stream_destroy(l_stream);
   opj_destroy_codec(l_codec);
 
-  numcomps = image->numcomps;
-  OPJ_SIZE_T nb_pixels = image->x1 * image->y1;
-  OPJ_SIZE_T image_size = nb_pixels * numcomps;
-  OPJ_UINT8 *out = (OPJ_UINT8 *)malloc(image_size);
+  OPJ_UINT32 numcomps = image->numcomps;
+  OPJ_BOOL convert_to_rgba = OPJ_FALSE;
 
-  if (!ignoreColorSpace) {
+  if (pdf_numcomps <= 0) {
+    // The pdf doesn't specify the color space, so we use the one from the image
+    // and convert it to RGBA.
+    numcomps = image->numcomps;
+    if (!(pdf_smaks_in_data && numcomps == 4)) {
+      if (image->color_space != OPJ_CLRSPC_SYCC && numcomps == 3 &&
+          image->comps[0].dx == image->comps[0].dy && image->comps[1].dx != 1) {
+        image->color_space = OPJ_CLRSPC_SYCC;
+      } else if (numcomps <= 2) {
+        image->color_space = OPJ_CLRSPC_GRAY;
+      }
+
+      if (image->color_space == OPJ_CLRSPC_SYCC) {
+        color_sycc_to_rgb(image);
+      } else if (image->color_space == OPJ_CLRSPC_CMYK) {
+        color_cmyk_to_rgb(image);
+      } else if (image->color_space == OPJ_CLRSPC_EYCC) {
+        color_esycc_to_rgb(image);
+      }
+      convert_to_rgba = OPJ_TRUE;
+    }
+  } else if (numcomps > pdf_numcomps) {
+    numcomps = pdf_numcomps;
+  }
+
+  if (!pdf_is_indexed_colormap) {
     for (int i = 0; i < numcomps; i++) {
       scale_component(&image->comps[i], 8);
     }
   }
 
-  switch (numcomps) {
-  case 1:
-    for (OPJ_SIZE_T i = 0; i < nb_pixels; i++) {
-      out[i] = image->comps[0].data[i];
-    }
-    break;
-  case 3: {
-    OPJ_INT32 *red = image->comps[0].data;
-    OPJ_INT32 *green = image->comps[1].data;
-    OPJ_INT32 *blue = image->comps[2].data;
-    for (OPJ_SIZE_T i = 0; i < nb_pixels; i++) {
-      out[3 * i] = red[i];
-      out[3 * i + 1] = green[i];
-      out[3 * i + 2] = blue[i];
-    }
-    break;
+  if (convert_to_rgba) {
+    numcomps = 4;
   }
-  case 4: {
-    OPJ_INT32 *red = image->comps[0].data;
-    OPJ_INT32 *green = image->comps[1].data;
-    OPJ_INT32 *blue = image->comps[2].data;
-    OPJ_INT32 *alpha = image->comps[3].data;
-    for (OPJ_SIZE_T i = 0; i < nb_pixels; i++) {
-      out[4 * i] = red[i];
-      out[4 * i + 1] = green[i];
-      out[4 * i + 2] = blue[i];
-      out[4 * i + 3] = alpha[i];
+
+  OPJ_SIZE_T nb_pixels = image->x1 * image->y1;
+  OPJ_SIZE_T image_size = nb_pixels * numcomps;
+  OPJ_UINT8 *out = (OPJ_UINT8 *)malloc(image_size);
+
+  if (convert_to_rgba) {
+    if (image->color_space == OPJ_CLRSPC_GRAY) {
+      if (image->numcomps == 1) {
+        for (OPJ_SIZE_T i = 0; i < nb_pixels; i++) {
+          out[4 * i] = out[4 * i + 1] = out[4 * i + 2] = image->comps[0].data[i];
+          out[4 * i + 3] = 255;
+        }
+      } else if (pdf_smaks_in_data) {
+        OPJ_INT32 *gray = image->comps[0].data;
+        OPJ_INT32 *alpha = image->comps[1].data;
+        for (OPJ_SIZE_T i = 0; i < nb_pixels; i++) {
+          out[4 * i] = out[4 * i + 1] = out[4 * i + 2] = gray[i];
+          out[4 * i + 3] = alpha[i];
+        }
+      }
+    } else {
+      OPJ_INT32 *red = image->comps[0].data;
+      OPJ_INT32 *green = image->comps[1].data;
+      OPJ_INT32 *blue = image->comps[2].data;
+      for (OPJ_SIZE_T i = 0; i < nb_pixels; i++) {
+        out[4 * i] = red[i];
+        out[4 * i + 1] = green[i];
+        out[4 * i + 2] = blue[i];
+        out[4 * i + 3] = 255;
+      }
+    }
+  } else {
+    switch (numcomps) {
+    case 1:
+      for (OPJ_SIZE_T i = 0; i < nb_pixels; i++) {
+        out[i] = image->comps[0].data[i];
+      }
+      break;
+    case 3: {
+      OPJ_INT32 *red = image->comps[0].data;
+      OPJ_INT32 *green = image->comps[1].data;
+      OPJ_INT32 *blue = image->comps[2].data;
+      for (OPJ_SIZE_T i = 0; i < nb_pixels; i++) {
+        out[3 * i] = red[i];
+        out[3 * i + 1] = green[i];
+        out[3 * i + 2] = blue[i];
+      }
+      break;
+    }
+    case 4: {
+      OPJ_INT32 *red = image->comps[0].data;
+      OPJ_INT32 *green = image->comps[1].data;
+      OPJ_INT32 *blue = image->comps[2].data;
+      OPJ_INT32 *alpha = image->comps[3].data;
+      for (OPJ_SIZE_T i = 0; i < nb_pixels; i++) {
+        out[4 * i] = red[i];
+        out[4 * i + 1] = green[i];
+        out[4 * i + 2] = blue[i];
+        out[4 * i + 3] = alpha[i];
+      }
+    }
     }
   }
+
+  if (image->icc_profile_buf) {
+    // Avoid a memory leak (see opj_decompress.c).
+    free(image->icc_profile_buf);
+    image->icc_profile_buf = NULL;
+    image->icc_profile_len = 0;
   }
 
   opj_image_destroy(image);
