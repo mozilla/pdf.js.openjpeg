@@ -29,4 +29,4 @@ node build.js -Cco my_output_dir
 
 ## Licensing
 
-The code is released under [Apache 2](https://www.apache.org/licenses/LICENSE-2.0).
+The code is released under [BSD 2-clause](https://spdx.org/licenses/BSD-2-Clause.html).
