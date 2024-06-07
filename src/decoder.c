@@ -4,8 +4,8 @@
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
  *
- * 1. Redistributions of source code must retain the above copyright notice, this
- *    list of conditions and the following disclaimer.
+ * 1. Redistributions of source code must retain the above copyright notice,
+ * this list of conditions and the following disclaimer.
  *
  * 2. Redistributions in binary form must reproduce the above copyright notice,
  *    this list of conditions and the following disclaimer in the documentation
@@ -13,14 +13,15 @@
  *
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
  * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
- * DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
- * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
- * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
- * SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
- * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
- * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
- * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+ * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ * ARISING IN ANY WAY buffer OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+ * POSSIBILITY OF SUCH DAMAGE.
  */
 
 // clang-format off
@@ -39,10 +40,14 @@
 #define likely(x) __builtin_expect(!!(x), 1)
 #define unlikely(x) __builtin_expect(!!(x), 0)
 
+// 1 MiB pixels should be enough in most of the cases.
+#define BUFFER_PIXELS_NUMBER 1048576
+
 // #define PDFJS_DEBUG
 
+extern void allocateImageData(OPJ_SIZE_T);
 extern void jsPrintWarning(const char *);
-extern void setImageData(OPJ_UINT8 *, OPJ_SIZE_T);
+extern void setImageData(OPJ_UINT8 *, OPJ_SIZE_T, OPJ_SIZE_T);
 extern void storeErrorMessage(const char *);
 
 static void error_callback(const char *msg, void *client_data) {
@@ -57,6 +62,48 @@ static void warning_callback(const char *msg, void *client_data) {
 static void quiet_callback(const char *msg, void *client_data) {
   (void)msg;
   (void)client_data;
+}
+
+inline void gray_to_rgba(opj_image_t *image, OPJ_UINT8 *buffer,
+                         OPJ_SIZE_T buffer_pixels, OPJ_SIZE_T offset) {
+  for (OPJ_SIZE_T i = 0; i < buffer_pixels; i++) {
+    buffer[4 * i] = buffer[4 * i + 1] = buffer[4 * i + 2] =
+        image->comps[0].data[offset + i];
+    buffer[4 * i + 3] = 255;
+  }
+  setImageData(buffer, buffer_pixels * 4, offset * 4);
+}
+
+inline void graya_to_rgba(opj_image_t *image, OPJ_UINT8 *buffer,
+                          OPJ_SIZE_T buffer_pixels, OPJ_SIZE_T offset) {
+  for (OPJ_SIZE_T i = 0; i < buffer_pixels; i++) {
+    buffer[4 * i] = buffer[4 * i + 1] = buffer[4 * i + 2] =
+        image->comps[0].data[offset + i];
+    buffer[4 * i + 3] = image->comps[1].data[offset + i];
+  }
+  setImageData(buffer, buffer_pixels * 4, offset * 4);
+}
+
+inline void rgb_to_rgba(opj_image_t *image, OPJ_UINT8 *buffer,
+                        OPJ_SIZE_T buffer_pixels, OPJ_SIZE_T offset) {
+  for (OPJ_SIZE_T i = 0; i < buffer_pixels; i++) {
+    buffer[4 * i] = image->comps[0].data[offset + i];
+    buffer[4 * i + 1] = image->comps[1].data[offset + i];
+    buffer[4 * i + 2] = image->comps[2].data[offset + i];
+    buffer[4 * i + 3] = 255;
+  }
+  setImageData(buffer, buffer_pixels * 4, offset * 4);
+}
+
+inline void copy_pixels(OPJ_SIZE_T num_comps, opj_image_t *image,
+                        OPJ_UINT8 *buffer, OPJ_SIZE_T buffer_pixels,
+                        OPJ_SIZE_T offset) {
+  for (OPJ_SIZE_T i = 0; i < buffer_pixels; i++) {
+    for (OPJ_SIZE_T j = 0; j < num_comps; j++) {
+      buffer[num_comps * i + j] = image->comps[j].data[offset + i];
+    }
+  }
+  setImageData(buffer, buffer_pixels * num_comps, offset * num_comps);
 }
 
 int EMSCRIPTEN_KEEPALIVE jp2_decode(OPJ_UINT8 *data, OPJ_SIZE_T data_size,
@@ -170,6 +217,13 @@ int EMSCRIPTEN_KEEPALIVE jp2_decode(OPJ_UINT8 *data, OPJ_SIZE_T data_size,
   opj_stream_destroy(l_stream);
   opj_destroy_codec(l_codec);
 
+  if (image->icc_profile_buf) {
+    // Avoid a memory leak (see opj_decompress.c).
+    free(image->icc_profile_buf);
+    image->icc_profile_buf = NULL;
+    image->icc_profile_len = 0;
+  }
+
   OPJ_UINT32 numcomps = image->numcomps;
   OPJ_BOOL convert_to_rgba = OPJ_FALSE;
 
@@ -210,77 +264,71 @@ int EMSCRIPTEN_KEEPALIVE jp2_decode(OPJ_UINT8 *data, OPJ_SIZE_T data_size,
 
   OPJ_SIZE_T nb_pixels = image->x1 * image->y1;
   OPJ_SIZE_T image_size = nb_pixels * numcomps;
-  OPJ_UINT8 *out = (OPJ_UINT8 *)malloc(image_size);
+
+  OPJ_SIZE_T buffer_size;
+  OPJ_SIZE_T buffer_pixels_base = BUFFER_PIXELS_NUMBER;
+  OPJ_UINT8 *buffer = NULL;
+
+  while (buffer == NULL && buffer_pixels_base > 1024) {
+    OPJ_SIZE_T max_size = buffer_pixels_base * numcomps;
+    buffer_size = image_size > max_size ? max_size : image_size;
+    buffer = (OPJ_UINT8 *)malloc(buffer_size * sizeof(OPJ_UINT8));
+    buffer_pixels_base /= 2;
+  }
+
+  if (buffer == NULL) {
+    storeErrorMessage("Failed to allocate memory for the image");
+    opj_image_destroy(image);
+    return 1;
+  }
+
+  if (buffer_size != image_size) {
+    jsPrintWarning("Reducing the size of the buffer");
+  }
+
+  OPJ_SIZE_T buffer_pixels = buffer_size / numcomps;
+  OPJ_SIZE_T i;
+  OPJ_SIZE_T n = nb_pixels / buffer_pixels;
+  OPJ_SIZE_T r = nb_pixels % buffer_pixels;
+
+  allocateImageData(image_size);
 
   if (convert_to_rgba) {
     if (image->color_space == OPJ_CLRSPC_GRAY) {
       if (image->numcomps == 1) {
-        for (OPJ_SIZE_T i = 0; i < nb_pixels; i++) {
-          out[4 * i] = out[4 * i + 1] = out[4 * i + 2] = image->comps[0].data[i];
-          out[4 * i + 3] = 255;
+        for (i = 0; i < n; i++) {
+          gray_to_rgba(image, buffer, buffer_pixels, i * buffer_pixels);
+        }
+        if (r) {
+          gray_to_rgba(image, buffer, r, i * buffer_pixels);
         }
       } else if (pdf_smaks_in_data) {
-        OPJ_INT32 *gray = image->comps[0].data;
-        OPJ_INT32 *alpha = image->comps[1].data;
-        for (OPJ_SIZE_T i = 0; i < nb_pixels; i++) {
-          out[4 * i] = out[4 * i + 1] = out[4 * i + 2] = gray[i];
-          out[4 * i + 3] = alpha[i];
+        for (i = 0; i < n; i++) {
+          graya_to_rgba(image, buffer, buffer_pixels, i * buffer_pixels);
+        }
+        if (r) {
+          graya_to_rgba(image, buffer, r, i * buffer_pixels);
         }
       }
     } else {
-      OPJ_INT32 *red = image->comps[0].data;
-      OPJ_INT32 *green = image->comps[1].data;
-      OPJ_INT32 *blue = image->comps[2].data;
-      for (OPJ_SIZE_T i = 0; i < nb_pixels; i++) {
-        out[4 * i] = red[i];
-        out[4 * i + 1] = green[i];
-        out[4 * i + 2] = blue[i];
-        out[4 * i + 3] = 255;
+      for (i = 0; i < n; i++) {
+        rgb_to_rgba(image, buffer, buffer_pixels, i * buffer_pixels);
+      }
+      if (r) {
+        rgb_to_rgba(image, buffer, r, i * buffer_pixels);
       }
     }
   } else {
-    switch (numcomps) {
-    case 1:
-      for (OPJ_SIZE_T i = 0; i < nb_pixels; i++) {
-        out[i] = image->comps[0].data[i];
-      }
-      break;
-    case 3: {
-      OPJ_INT32 *red = image->comps[0].data;
-      OPJ_INT32 *green = image->comps[1].data;
-      OPJ_INT32 *blue = image->comps[2].data;
-      for (OPJ_SIZE_T i = 0; i < nb_pixels; i++) {
-        out[3 * i] = red[i];
-        out[3 * i + 1] = green[i];
-        out[3 * i + 2] = blue[i];
-      }
-      break;
+    for (i = 0; i < n; i++) {
+      copy_pixels(numcomps, image, buffer, buffer_pixels, i * buffer_pixels);
     }
-    case 4: {
-      OPJ_INT32 *red = image->comps[0].data;
-      OPJ_INT32 *green = image->comps[1].data;
-      OPJ_INT32 *blue = image->comps[2].data;
-      OPJ_INT32 *alpha = image->comps[3].data;
-      for (OPJ_SIZE_T i = 0; i < nb_pixels; i++) {
-        out[4 * i] = red[i];
-        out[4 * i + 1] = green[i];
-        out[4 * i + 2] = blue[i];
-        out[4 * i + 3] = alpha[i];
-      }
+    if (r) {
+      copy_pixels(numcomps, image, buffer, r, i * buffer_pixels);
     }
-    }
-  }
-
-  if (image->icc_profile_buf) {
-    // Avoid a memory leak (see opj_decompress.c).
-    free(image->icc_profile_buf);
-    image->icc_profile_buf = NULL;
-    image->icc_profile_len = 0;
   }
 
   opj_image_destroy(image);
-  setImageData(out, image_size);
-  free(out);
+  free(buffer);
 
   return 0;
 }

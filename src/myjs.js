@@ -28,10 +28,11 @@ mergeInto(LibraryManager.library, {
     const message = UTF8ToString(message_ptr);
     (Module.warn || console.warn)(`OpenJPEG: ${message}`);
   },
-  setImageData: function (array_ptr, array_size) {
-    Module.imageData = new Uint8ClampedArray(
-      Module.HEAPU8.subarray(array_ptr, array_ptr + array_size)
-    );
+  setImageData: function (array_ptr, array_size, offset) {
+    Module.imageData.set(Module.HEAPU8.subarray(array_ptr, array_ptr + array_size), offset);
+  },
+  allocateImageData: function (size) {
+    Module.imageData = new Uint8ClampedArray(size);
   },
   storeErrorMessage: function (message_ptr) {
     const message = UTF8ToString(message_ptr);
