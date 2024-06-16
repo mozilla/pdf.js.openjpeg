@@ -45,10 +45,16 @@
 
 // #define PDFJS_DEBUG
 
-extern void allocateImageData(OPJ_SIZE_T);
 extern void jsPrintWarning(const char *);
 extern void setImageData(OPJ_UINT8 *, OPJ_SIZE_T, OPJ_SIZE_T);
 extern void storeErrorMessage(const char *);
+extern void copy_pixels_1(OPJ_INT32 *, OPJ_SIZE_T);
+extern void copy_pixels_3(OPJ_INT32 *, OPJ_INT32 *, OPJ_INT32 *, OPJ_SIZE_T);
+extern void copy_pixels_4(OPJ_INT32 *, OPJ_INT32 *, OPJ_INT32 *, OPJ_INT32 *,
+                          OPJ_SIZE_T);
+extern void gray_to_rgba(OPJ_INT32 *, OPJ_SIZE_T);
+extern void graya_to_rgba(OPJ_INT32 *, OPJ_INT32 *, OPJ_SIZE_T);
+extern void rgb_to_rgba(OPJ_INT32 *, OPJ_INT32 *, OPJ_INT32 *, OPJ_SIZE_T);
 
 static void error_callback(const char *msg, void *client_data) {
   (void)client_data;
@@ -62,48 +68,6 @@ static void warning_callback(const char *msg, void *client_data) {
 static void quiet_callback(const char *msg, void *client_data) {
   (void)msg;
   (void)client_data;
-}
-
-inline void gray_to_rgba(opj_image_t *image, OPJ_UINT8 *buffer,
-                         OPJ_SIZE_T buffer_pixels, OPJ_SIZE_T offset) {
-  for (OPJ_SIZE_T i = 0; i < buffer_pixels; i++) {
-    buffer[4 * i] = buffer[4 * i + 1] = buffer[4 * i + 2] =
-        image->comps[0].data[offset + i];
-    buffer[4 * i + 3] = 255;
-  }
-  setImageData(buffer, buffer_pixels * 4, offset * 4);
-}
-
-inline void graya_to_rgba(opj_image_t *image, OPJ_UINT8 *buffer,
-                          OPJ_SIZE_T buffer_pixels, OPJ_SIZE_T offset) {
-  for (OPJ_SIZE_T i = 0; i < buffer_pixels; i++) {
-    buffer[4 * i] = buffer[4 * i + 1] = buffer[4 * i + 2] =
-        image->comps[0].data[offset + i];
-    buffer[4 * i + 3] = image->comps[1].data[offset + i];
-  }
-  setImageData(buffer, buffer_pixels * 4, offset * 4);
-}
-
-inline void rgb_to_rgba(opj_image_t *image, OPJ_UINT8 *buffer,
-                        OPJ_SIZE_T buffer_pixels, OPJ_SIZE_T offset) {
-  for (OPJ_SIZE_T i = 0; i < buffer_pixels; i++) {
-    buffer[4 * i] = image->comps[0].data[offset + i];
-    buffer[4 * i + 1] = image->comps[1].data[offset + i];
-    buffer[4 * i + 2] = image->comps[2].data[offset + i];
-    buffer[4 * i + 3] = 255;
-  }
-  setImageData(buffer, buffer_pixels * 4, offset * 4);
-}
-
-inline void copy_pixels(OPJ_SIZE_T num_comps, opj_image_t *image,
-                        OPJ_UINT8 *buffer, OPJ_SIZE_T buffer_pixels,
-                        OPJ_SIZE_T offset) {
-  for (OPJ_SIZE_T i = 0; i < buffer_pixels; i++) {
-    for (OPJ_SIZE_T j = 0; j < num_comps; j++) {
-      buffer[num_comps * i + j] = image->comps[j].data[offset + i];
-    }
-  }
-  setImageData(buffer, buffer_pixels * num_comps, offset * num_comps);
 }
 
 int EMSCRIPTEN_KEEPALIVE jp2_decode(OPJ_UINT8 *data, OPJ_SIZE_T data_size,
@@ -258,77 +222,35 @@ int EMSCRIPTEN_KEEPALIVE jp2_decode(OPJ_UINT8 *data, OPJ_SIZE_T data_size,
     }
   }
 
-  if (convert_to_rgba) {
-    numcomps = 4;
-  }
-
   OPJ_SIZE_T nb_pixels = image->x1 * image->y1;
-  OPJ_SIZE_T image_size = nb_pixels * numcomps;
-
-  OPJ_SIZE_T buffer_size;
-  OPJ_SIZE_T buffer_pixels_base = BUFFER_PIXELS_NUMBER;
-  OPJ_UINT8 *buffer = NULL;
-
-  while (buffer == NULL && buffer_pixels_base > 1024) {
-    OPJ_SIZE_T max_size = buffer_pixels_base * numcomps;
-    buffer_size = image_size > max_size ? max_size : image_size;
-    buffer = (OPJ_UINT8 *)malloc(buffer_size * sizeof(OPJ_UINT8));
-    buffer_pixels_base /= 2;
-  }
-
-  if (buffer == NULL) {
-    storeErrorMessage("Failed to allocate memory for the image");
-    opj_image_destroy(image);
-    return 1;
-  }
-
-  if (buffer_size != image_size) {
-    jsPrintWarning("Reducing the size of the buffer");
-  }
-
-  OPJ_SIZE_T buffer_pixels = buffer_size / numcomps;
-  OPJ_SIZE_T i;
-  OPJ_SIZE_T n = nb_pixels / buffer_pixels;
-  OPJ_SIZE_T r = nb_pixels % buffer_pixels;
-
-  allocateImageData(image_size);
 
   if (convert_to_rgba) {
     if (image->color_space == OPJ_CLRSPC_GRAY) {
       if (image->numcomps == 1) {
-        for (i = 0; i < n; i++) {
-          gray_to_rgba(image, buffer, buffer_pixels, i * buffer_pixels);
-        }
-        if (r) {
-          gray_to_rgba(image, buffer, r, i * buffer_pixels);
-        }
+        gray_to_rgba(image->comps[0].data, nb_pixels);
       } else if (pdf_smaks_in_data) {
-        for (i = 0; i < n; i++) {
-          graya_to_rgba(image, buffer, buffer_pixels, i * buffer_pixels);
-        }
-        if (r) {
-          graya_to_rgba(image, buffer, r, i * buffer_pixels);
-        }
+        graya_to_rgba(image->comps[0].data, image->comps[1].data, nb_pixels);
       }
     } else {
-      for (i = 0; i < n; i++) {
-        rgb_to_rgba(image, buffer, buffer_pixels, i * buffer_pixels);
-      }
-      if (r) {
-        rgb_to_rgba(image, buffer, r, i * buffer_pixels);
-      }
+      rgb_to_rgba(image->comps[0].data, image->comps[1].data,
+                  image->comps[2].data, nb_pixels);
     }
   } else {
-    for (i = 0; i < n; i++) {
-      copy_pixels(numcomps, image, buffer, buffer_pixels, i * buffer_pixels);
-    }
-    if (r) {
-      copy_pixels(numcomps, image, buffer, r, i * buffer_pixels);
+    switch (numcomps) {
+    case 1:
+      copy_pixels_1(image->comps[0].data, nb_pixels);
+      break;
+    case 3:
+      copy_pixels_3(image->comps[0].data, image->comps[1].data,
+                    image->comps[2].data, nb_pixels);
+      break;
+    case 4:
+      copy_pixels_4(image->comps[0].data, image->comps[1].data,
+                    image->comps[2].data, image->comps[3].data, nb_pixels);
+      break;
     }
   }
-
   opj_image_destroy(image);
-  free(buffer);
 
   return 0;
 }
