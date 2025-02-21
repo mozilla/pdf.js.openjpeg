@@ -28,7 +28,7 @@ then
     CFLAGS="-Oz"
     WASM=0
 else
-    CFLAGS="-O3 -msimd128 -msse"
+    CFLAGS="-O3 -msimd128"
     WASM=1
 fi
 

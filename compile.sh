@@ -39,7 +39,7 @@ then
     WASM=0
 else
     OUTPUT_FILE="openjpeg.js"
-    CFLAGS="-O3 -msimd128 -msse"
+    CFLAGS="-O3 -msimd128"
     WASM=1
 fi
 
