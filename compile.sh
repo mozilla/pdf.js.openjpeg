@@ -23,12 +23,27 @@
 
 #!/bin/sh
 
+BUILD_TYPE=${BUILD_TYPE:=wasm}
+BUILD_DIR=${BUILD_DIR:=build_${BUILD_TYPE}}
 INPUT=${INPUT:=src}
 OUTPUT=${OUTPUT:=.}
 OPENJPEG=${OPENJPEG:=..}
-OPENJPEG_BUILD=${OPENJPEG_BUILD:=${OPENJPEG}/build}
+OPENJPEG_BUILD=${OPENJPEG_BUILD:=${OPENJPEG}/${BUILD_DIR}}
 
-emcc -o ${OUTPUT}/openjpeg.js \
+echo "Building ${BUILD_TYPE}..."
+
+if [ "$BUILD_TYPE" = "js" ]
+then
+    OUTPUT_FILE="openjpeg_nowasm_fallback.js"
+    CFLAGS="-Oz"
+    WASM=0
+else
+    OUTPUT_FILE="openjpeg.js"
+    CFLAGS="-O3 -msimd128 -msse"
+    WASM=1
+fi
+
+emcc -o ${OUTPUT}/${OUTPUT_FILE} \
         ${OPENJPEG_BUILD}/bin/libopenjp2.a \
         ${OPENJPEG}/src/bin/jp2/convert.c \
         ${OPENJPEG}/src/bin/common/color.c \
@@ -39,10 +54,10 @@ emcc -o ${OUTPUT}/openjpeg.js \
         -I${OPENJPEG_BUILD}/src/lib/openjp2 \
         -I${OPENJPEG_BUILD}/src/bin/common \
         -s ALLOW_MEMORY_GROWTH=1 \
-        -s WASM=1 \
+        -s WASM=${WASM} \
         -s MODULARIZE=1 \
         -s EXPORT_NAME="'OpenJPEG'" \
-        -s WASM_ASYNC_COMPILATION=1 \
+        -s WASM_ASYNC_COMPILATION=${WASM} \
         -s EXPORT_ES6=1 \
         -s USE_ES6_IMPORT_META=0 \
         -s SINGLE_FILE=0 \
@@ -56,10 +71,12 @@ emcc -o ${OUTPUT}/openjpeg.js \
         -s ASSERTIONS=0 \
         -DNDEBUG \
         -flto \
-        -O3 \
-        -msimd128 -msse \
+        ${CFLAGS} \
         --js-library ${INPUT}/myjs.js
 
-chmod ugo-x ${OUTPUT}/openjpeg.wasm
+if [ "$BUILD_TYPE" = "wasm" ]
+then
+    chmod ugo-x ${OUTPUT}/openjpeg.wasm
+fi
 
 # -s ASSERTIONS=2 -s SAFE_HEAP=1 -s STACK_OVERFLOW_CHECK=2 -O0 -g4 \

@@ -40,9 +40,6 @@
 #define likely(x) __builtin_expect(!!(x), 1)
 #define unlikely(x) __builtin_expect(!!(x), 0)
 
-// 1 MiB pixels should be enough in most of the cases.
-#define BUFFER_PIXELS_NUMBER 1048576
-
 // #define PDFJS_DEBUG
 
 extern void jsPrintWarning(const char *);

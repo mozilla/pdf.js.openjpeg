@@ -37,7 +37,7 @@ mergeInto(LibraryManager.library, {
   copy_pixels_1(compG_ptr, nb_pixels) {
     compG_ptr >>= 2;
     const imageData = (Module.imageData = new Uint8ClampedArray(nb_pixels));
-    const compG = Module.HEAP32.subarray(compG_ptr, compG_ptr + nb_pixels);
+    const compG = HEAP32.subarray(compG_ptr, compG_ptr + nb_pixels);
     imageData.set(compG);
   },
   copy_pixels_3(compR_ptr, compG_ptr, compB_ptr, nb_pixels) {
@@ -45,9 +45,9 @@ mergeInto(LibraryManager.library, {
     compG_ptr >>= 2;
     compB_ptr >>= 2;
     const imageData = (Module.imageData = new Uint8ClampedArray(nb_pixels * 3));
-    const compR = Module.HEAP32.subarray(compR_ptr, compR_ptr + nb_pixels);
-    const compG = Module.HEAP32.subarray(compG_ptr, compG_ptr + nb_pixels);
-    const compB = Module.HEAP32.subarray(compB_ptr, compB_ptr + nb_pixels);
+    const compR = HEAP32.subarray(compR_ptr, compR_ptr + nb_pixels);
+    const compG = HEAP32.subarray(compG_ptr, compG_ptr + nb_pixels);
+    const compB = HEAP32.subarray(compB_ptr, compB_ptr + nb_pixels);
     for (let i = 0; i < nb_pixels; i++) {
       imageData[3 * i] = compR[i];
       imageData[3 * i + 1] = compG[i];
@@ -60,10 +60,10 @@ mergeInto(LibraryManager.library, {
     compB_ptr >>= 2;
     compA_ptr >>= 2;
     const imageData = (Module.imageData = new Uint8ClampedArray(nb_pixels * 4));
-    const compR = Module.HEAP32.subarray(compR_ptr, compR_ptr + nb_pixels);
-    const compG = Module.HEAP32.subarray(compG_ptr, compG_ptr + nb_pixels);
-    const compB = Module.HEAP32.subarray(compB_ptr, compB_ptr + nb_pixels);
-    const compA = Module.HEAP32.subarray(compA_ptr, compA_ptr + nb_pixels);
+    const compR = HEAP32.subarray(compR_ptr, compR_ptr + nb_pixels);
+    const compG = HEAP32.subarray(compG_ptr, compG_ptr + nb_pixels);
+    const compB = HEAP32.subarray(compB_ptr, compB_ptr + nb_pixels);
+    const compA = HEAP32.subarray(compA_ptr, compA_ptr + nb_pixels);
     for (let i = 0; i < nb_pixels; i++) {
       imageData[4 * i] = compR[i];
       imageData[4 * i + 1] = compG[i];
@@ -74,7 +74,7 @@ mergeInto(LibraryManager.library, {
   gray_to_rgba(compG_ptr, nb_pixels) {
     compG_ptr >>= 2;
     const imageData = (Module.imageData = new Uint8ClampedArray(nb_pixels * 4));
-    const compG = Module.HEAP32.subarray(compG_ptr, compG_ptr + nb_pixels);
+    const compG = HEAP32.subarray(compG_ptr, compG_ptr + nb_pixels);
     for (let i = 0; i < nb_pixels; i++) {
       imageData[4 * i] = imageData[4 * i + 1] = imageData[4 * i + 2] = compG[i];
       imageData[4 * i + 3] = 0xff;
@@ -84,8 +84,8 @@ mergeInto(LibraryManager.library, {
     compG_ptr >>= 2;
     compA_ptr >>= 2;
     const imageData = (Module.imageData = new Uint8ClampedArray(nb_pixels * 4));
-    const compG = Module.HEAP32.subarray(compG_ptr, compG_ptr + nb_pixels);
-    const compA = Module.HEAP32.subarray(compA_ptr, compA_ptr + nb_pixels);
+    const compG = HEAP32.subarray(compG_ptr, compG_ptr + nb_pixels);
+    const compA = HEAP32.subarray(compA_ptr, compA_ptr + nb_pixels);
     for (let i = 0; i < nb_pixels; i++) {
       imageData[4 * i] = imageData[4 * i + 1] = imageData[4 * i + 2] = compG[i];
       imageData[4 * i + 3] = compA[i];
@@ -96,9 +96,9 @@ mergeInto(LibraryManager.library, {
     compG_ptr >>= 2;
     compB_ptr >>= 2;
     const imageData = (Module.imageData = new Uint8ClampedArray(nb_pixels * 4));
-    const compR = Module.HEAP32.subarray(compR_ptr, compR_ptr + nb_pixels);
-    const compG = Module.HEAP32.subarray(compG_ptr, compG_ptr + nb_pixels);
-    const compB = Module.HEAP32.subarray(compB_ptr, compB_ptr + nb_pixels);
+    const compR = HEAP32.subarray(compR_ptr, compR_ptr + nb_pixels);
+    const compG = HEAP32.subarray(compG_ptr, compG_ptr + nb_pixels);
+    const compB = HEAP32.subarray(compB_ptr, compB_ptr + nb_pixels);
     for (let i = 0; i < nb_pixels; i++) {
       imageData[4 * i] = compR[i];
       imageData[4 * i + 1] = compG[i];

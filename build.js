@@ -38,18 +38,18 @@ function execAndPrint(fun, args) {
 }
 
 function create() {
-  return execAndPrint("docker", "build -t openjpeg-decoder .");
+  return execAndPrint("docker", `build -t openjpeg-decoder .`);
 }
 
-function build(path) {
+function build(type, path) {
   const workingDir = resolve(".");
   return execAndPrint(
     "docker",
-    `run -t -v ${path}:/js -v ${workingDir}:/code --rm openjpeg-decoder`
+    `run -t -v ${path}:/js -v ${workingDir}:/code --env BUILD_TYPE=${type} --rm openjpeg-decoder`
   );
 }
 
-function compile(path) {
+function compile(type, path) {
   path = resolve(path);
   fs.access(path, fs.constants.F_OK, (err) => {
     if (err) {
@@ -63,10 +63,10 @@ function compile(path) {
         .filter((line) => Boolean(line));
       if (output.length === 1) {
         create().then(() => {
-          build(path);
+          build(type, path);
         });
       } else {
-        build(path);
+        build(type, path);
       }
     });
   });
@@ -88,14 +88,18 @@ parser.add_argument("-o", "--output", {
   help: "Output directory",
   default: ".",
 });
+parser.add_argument("-t", "--type", {
+  help: "Type (wasm or js)",
+  default: "wasm",
+});
 
 const args = parser.parse_args();
 if (args.create) {
   create().then(() => {
     if (args.compile) {
-      compile(args.output);
+      compile(args.type, args.output);
     }
   });
 } else if (args.compile) {
-  compile(args.output);
+  compile(args.type, args.output);
 }
