@@ -78,5 +78,6 @@ if [ "$BUILD_TYPE" = "wasm" ]
 then
     chmod ugo-x ${OUTPUT}/openjpeg.wasm
 fi
+sed -i '1 i\/* THIS FILE IS GENERATED - DO NOT EDIT */' ${OUTPUT}/${OUTPUT_FILE}
 
 # -s ASSERTIONS=2 -s SAFE_HEAP=1 -s STACK_OVERFLOW_CHECK=2 -O0 -g4 \
