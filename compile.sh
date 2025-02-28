@@ -30,7 +30,7 @@ OUTPUT=${OUTPUT:=.}
 OPENJPEG=${OPENJPEG:=..}
 OPENJPEG_BUILD=${OPENJPEG_BUILD:=${OPENJPEG}/${BUILD_DIR}}
 
-echo "Building ${BUILD_TYPE}..."
+echo "Building ${BUILD_TYPE} from ${BUILD_DIR} to ${OUTPUT}..."
 
 if [ "$BUILD_TYPE" = "js" ]
 then
@@ -39,7 +39,7 @@ then
     WASM=0
 else
     OUTPUT_FILE="openjpeg.js"
-    CFLAGS="-O3 -msimd128"
+    CFLAGS="-O3 -msimd128 -msse"
     WASM=1
 fi
 

@@ -1,4 +1,4 @@
-FROM emscripten/emsdk:latest
+FROM emscripten/emsdk:4.0.3
 WORKDIR /tmp
 
 ENV OPENJPEG_GIT_HASH 6e92b398dc8e0bf1c2d39dc01f4e9f94b15e75f7
@@ -25,5 +25,7 @@ RUN ./compile_lib.sh
 ENV BUILD_TYPE js
 ENV BUILD_DIR build_${BUILD_TYPE}
 RUN ./compile_lib.sh
+
+ENV BUILD_DIR ""
 
 CMD /code/compile.sh
