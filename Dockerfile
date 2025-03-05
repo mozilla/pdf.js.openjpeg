@@ -1,4 +1,4 @@
-FROM emscripten/emsdk:4.0.3
+FROM emscripten/emsdk:latest
 WORKDIR /tmp
 
 ENV OPENJPEG_GIT_HASH 6e92b398dc8e0bf1c2d39dc01f4e9f94b15e75f7

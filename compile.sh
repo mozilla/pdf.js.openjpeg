@@ -59,7 +59,6 @@ emcc -o ${OUTPUT}/${OUTPUT_FILE} \
         -s EXPORT_NAME="'OpenJPEG'" \
         -s WASM_ASYNC_COMPILATION=${WASM} \
         -s EXPORT_ES6=1 \
-        -s USE_ES6_IMPORT_META=0 \
         -s SINGLE_FILE=0 \
         -s ENVIRONMENT='web' \
         -s ERROR_ON_UNDEFINED_SYMBOLS=1 \
