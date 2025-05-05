@@ -54,6 +54,7 @@ emcc -o ${OUTPUT}/${OUTPUT_FILE} \
         -I${OPENJPEG_BUILD}/src/lib/openjp2 \
         -I${OPENJPEG_BUILD}/src/bin/common \
         -s ALLOW_MEMORY_GROWTH=1 \
+        -s MAXIMUM_MEMORY=2GB \
         -s WASM=${WASM} \
         -s MODULARIZE=1 \
         -s EXPORT_NAME="'OpenJPEG'" \
@@ -65,7 +66,7 @@ emcc -o ${OUTPUT}/${OUTPUT_FILE} \
         -s NO_FILESYSTEM=1 \
         -s NO_EXIT_RUNTIME=1 \
         -s MALLOC=emmalloc \
-        -s EXPORTED_FUNCTIONS='["_jp2_decode", "_malloc", "_free"]' \
+        -s EXPORTED_FUNCTIONS='["_jp2_decode", "_malloc", "_free", "writeArrayToMemory"]' \
         -s AGGRESSIVE_VARIABLE_ELIMINATION=1 \
         -s ASSERTIONS=0 \
         -DNDEBUG \

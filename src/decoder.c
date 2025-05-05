@@ -70,7 +70,8 @@ static void quiet_callback(const char *msg, void *client_data) {
 int EMSCRIPTEN_KEEPALIVE jp2_decode(OPJ_UINT8 *data, OPJ_SIZE_T data_size,
                                     OPJ_UINT32 pdf_numcomps,
                                     OPJ_BOOL pdf_is_indexed_colormap,
-                                    OPJ_BOOL pdf_smaks_in_data) {
+                                    OPJ_BOOL pdf_smaks_in_data,
+                                    OPJ_UINT32 pdf_reduce_factor) {
   opj_dparameters_t parameters;
   opj_codec_t *l_codec = NULL;
   opj_image_t *image = NULL;
@@ -121,9 +122,17 @@ int EMSCRIPTEN_KEEPALIVE jp2_decode(OPJ_UINT8 *data, OPJ_SIZE_T data_size,
     return 1;
   }
 
+  if (pdf_reduce_factor && unlikely(!opj_set_decoded_resolution_factor(l_codec, pdf_reduce_factor))) {
+    storeErrorMessage("Failed to setup the reduction factor");
+    opj_stream_destroy(l_stream);
+    opj_destroy_codec(l_codec);
+    opj_image_destroy(image);
+    return 1;
+  }
+
 #ifdef PDFJS_DEBUG
-  printf("Arguments: numcomps: %d, is_indexed: %d, smask_in_data: %d\n",
-         pdf_numcomps, pdf_is_indexed_colormap, pdf_smaks_in_data);
+  printf("Arguments: numcomps: %d, is_indexed: %d, smask_in_data: %d, reduce_factor: %d %d\n",
+         pdf_numcomps, pdf_is_indexed_colormap, pdf_smaks_in_data, pdf_reduce_factor, sizeof(OPJ_UINT32));
   printf("image X %d\n", image->x1);
   printf("image Y %d\n", image->y1);
   printf("image numcomps %d\n", image->numcomps);
@@ -219,7 +228,7 @@ int EMSCRIPTEN_KEEPALIVE jp2_decode(OPJ_UINT8 *data, OPJ_SIZE_T data_size,
     }
   }
 
-  OPJ_SIZE_T nb_pixels = image->x1 * image->y1;
+  OPJ_SIZE_T nb_pixels = image->comps[0].w * image->comps[0].h;
 
   if (convert_to_rgba) {
     if (image->color_space == OPJ_CLRSPC_GRAY) {

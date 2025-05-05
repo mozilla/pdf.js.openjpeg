@@ -33,7 +33,7 @@ else
 fi
 
 cd openjpeg && \
-    mkdir ${BUILD_DIR} && cd ${BUILD_DIR} && \
+    mkdir -p ${BUILD_DIR} && cd ${BUILD_DIR} && \
     emcmake cmake .. \
     -DCMAKE_C_FLAGS="${CFLAGS}" \
     -DBUILD_SHARED_LIBS=OFF \
