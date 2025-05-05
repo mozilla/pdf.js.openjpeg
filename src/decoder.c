@@ -37,21 +37,23 @@
 #define JP2_MAGIC 0x0A870A0D
 #define J2K_CODESTREAM_MAGIC 0x51FF4FFF
 
+#define STRIP_HEIGHT 256
+
 #define likely(x) __builtin_expect(!!(x), 1)
 #define unlikely(x) __builtin_expect(!!(x), 0)
 
 // #define PDFJS_DEBUG
 
 extern void jsPrintWarning(const char *);
-extern void setImageData(OPJ_UINT8 *, OPJ_SIZE_T, OPJ_SIZE_T);
 extern void storeErrorMessage(const char *);
-extern void copy_pixels_1(OPJ_INT32 *, OPJ_SIZE_T);
-extern void copy_pixels_3(OPJ_INT32 *, OPJ_INT32 *, OPJ_INT32 *, OPJ_SIZE_T);
+extern void initImageData(OPJ_UINT32, OPJ_UINT32);
+extern void copy_pixels_1(OPJ_INT32 *, OPJ_SIZE_T, OPJ_SIZE_T);
+extern void copy_pixels_3(OPJ_INT32 *, OPJ_INT32 *, OPJ_INT32 *, OPJ_SIZE_T, OPJ_SIZE_T);
 extern void copy_pixels_4(OPJ_INT32 *, OPJ_INT32 *, OPJ_INT32 *, OPJ_INT32 *,
-                          OPJ_SIZE_T);
-extern void gray_to_rgba(OPJ_INT32 *, OPJ_SIZE_T);
-extern void graya_to_rgba(OPJ_INT32 *, OPJ_INT32 *, OPJ_SIZE_T);
-extern void rgb_to_rgba(OPJ_INT32 *, OPJ_INT32 *, OPJ_INT32 *, OPJ_SIZE_T);
+                          OPJ_SIZE_T, OPJ_SIZE_T);
+extern void gray_to_rgba(OPJ_INT32 *, OPJ_SIZE_T, OPJ_SIZE_T);
+extern void graya_to_rgba(OPJ_INT32 *, OPJ_INT32 *, OPJ_SIZE_T, OPJ_SIZE_T);
+extern void rgb_to_rgba(OPJ_INT32 *, OPJ_INT32 *, OPJ_INT32 *, OPJ_SIZE_T, OPJ_SIZE_T);
 
 static void error_callback(const char *msg, void *client_data) {
   (void)client_data;
@@ -75,6 +77,8 @@ int EMSCRIPTEN_KEEPALIVE jp2_decode(OPJ_UINT8 *data, OPJ_SIZE_T data_size,
   opj_codec_t *l_codec = NULL;
   opj_image_t *image = NULL;
   opj_stream_t *l_stream = NULL;
+  OPJ_UINT32 x0, y0, x1, y1, y;
+  OPJ_UINT32 full_x0, full_y0, full_x1, full_y1;
 
   OPJ_UINT32 *int32data = (OPJ_UINT32 *)data;
   if (int32data[0] == JP2_MAGIC || (int32data[0] == JP2_RFC3745_MAGIC_0 &&
@@ -129,14 +133,110 @@ int EMSCRIPTEN_KEEPALIVE jp2_decode(OPJ_UINT8 *data, OPJ_SIZE_T data_size,
   printf("image numcomps %d\n", image->numcomps);
 #endif
 
-  /* decode the image */
-  if (unlikely(!opj_decode(l_codec, l_stream, image) ||
-               !opj_end_decompress(l_codec, l_stream))) {
-    storeErrorMessage("Failed to decode the image");
-    opj_destroy_codec(l_codec);
-    opj_stream_destroy(l_stream);
-    opj_image_destroy(image);
-    return 1;
+  full_x0 = image->x0;
+  full_y0 = image->y0;
+  full_x1 = image->x1;
+  full_y1 = image->y1;
+
+  x0 = image->x0;
+  y0 = image->y0;
+  x1 = image->x1;
+  y1 = image->y1;
+
+  OPJ_UINT32 width = full_x1 - full_x0;
+  OPJ_UINT32 height = full_y1 - full_y0;
+
+  initImageData(width, height);
+
+  /* Decode the image in height strips */
+  for (y = y0; y < y1; y += STRIP_HEIGHT) {
+    OPJ_UINT32 h_req = STRIP_HEIGHT;
+    if (y + h_req > y1) {
+      h_req = y1 - y;
+    }
+
+    if (!opj_set_decode_area(l_codec, image, (OPJ_INT32)x0, (OPJ_INT32)y,
+                             (OPJ_INT32)x1, (OPJ_INT32)(y + h_req))) {
+      storeErrorMessage("Failed to set the decoded area");
+      opj_stream_destroy(l_stream);
+      opj_destroy_codec(l_codec);
+      opj_image_destroy(image);
+      return 1;
+    }
+
+    if (!(opj_decode(l_codec, l_stream, image))) {
+      storeErrorMessage("Failed to decode image");
+      opj_stream_destroy(l_stream);
+      opj_destroy_codec(l_codec);
+      opj_image_destroy(image);
+      return 1;
+    }
+
+    OPJ_UINT32 numcomps = image->numcomps;
+    OPJ_BOOL convert_to_rgba = OPJ_FALSE;
+
+    // The pdf doesn't specify the color space, so we use the one from the image
+    // and convert it to RGBA.
+    if (pdf_numcomps <= 0) {
+      numcomps = image->numcomps;
+      if (!(pdf_smaks_in_data && numcomps == 4)) {
+        if (image->color_space != OPJ_CLRSPC_SYCC && numcomps == 3 &&
+            image->comps[0].dx == image->comps[0].dy && image->comps[1].dx != 1) {
+          image->color_space = OPJ_CLRSPC_SYCC;
+        } else if (numcomps <= 2) {
+          image->color_space = OPJ_CLRSPC_GRAY;
+        }
+
+        if (image->color_space == OPJ_CLRSPC_SYCC) {
+          color_sycc_to_rgb(image);
+        } else if (image->color_space == OPJ_CLRSPC_CMYK) {
+          color_cmyk_to_rgb(image);
+        } else if (image->color_space == OPJ_CLRSPC_EYCC) {
+          color_esycc_to_rgb(image);
+        }
+        convert_to_rgba = OPJ_TRUE;
+      }
+    } else if (numcomps > pdf_numcomps) {
+      numcomps = pdf_numcomps;
+    }
+
+    if (!pdf_is_indexed_colormap) {
+      for (int i = 0; i < numcomps; i++) {
+        scale_component(&image->comps[i], 8);
+      }
+    }
+
+    OPJ_SIZE_T nb_pixels = (OPJ_SIZE_T)image->comps[0].w * image->comps[0].h;
+
+    OPJ_SIZE_T strip_start_row = y - full_y0;
+    OPJ_SIZE_T offset = strip_start_row * width * 4;
+
+    if (convert_to_rgba) {
+      if (image->color_space == OPJ_CLRSPC_GRAY) {
+        if (image->numcomps == 1) {
+          gray_to_rgba(image->comps[0].data, nb_pixels, offset);
+        } else if (pdf_smaks_in_data) {
+          graya_to_rgba(image->comps[0].data, image->comps[1].data, nb_pixels, offset);
+        }
+      } else {
+        rgb_to_rgba(image->comps[0].data, image->comps[1].data,
+                   image->comps[2].data, nb_pixels, offset);
+      }
+    } else {
+      switch (numcomps) {
+      case 1:
+        copy_pixels_1(image->comps[0].data, nb_pixels, offset);
+        break;
+      case 3:
+        copy_pixels_3(image->comps[0].data, image->comps[1].data,
+                      image->comps[2].data, nb_pixels, offset);
+        break;
+      case 4:
+        copy_pixels_4(image->comps[0].data, image->comps[1].data,
+                      image->comps[2].data, image->comps[3].data, nb_pixels, offset);
+        break;
+      }
+    }
   }
 
 #ifdef PDFJS_DEBUG
@@ -175,9 +275,6 @@ int EMSCRIPTEN_KEEPALIVE jp2_decode(OPJ_UINT8 *data, OPJ_SIZE_T data_size,
          image->comps[2].h);
 #endif
 
-  opj_stream_destroy(l_stream);
-  opj_destroy_codec(l_codec);
-
   if (image->icc_profile_buf) {
     // Avoid a memory leak (see opj_decompress.c).
     free(image->icc_profile_buf);
@@ -185,69 +282,15 @@ int EMSCRIPTEN_KEEPALIVE jp2_decode(OPJ_UINT8 *data, OPJ_SIZE_T data_size,
     image->icc_profile_len = 0;
   }
 
-  OPJ_UINT32 numcomps = image->numcomps;
-  OPJ_BOOL convert_to_rgba = OPJ_FALSE;
-
-  if (pdf_numcomps <= 0) {
-    // The pdf doesn't specify the color space, so we use the one from the image
-    // and convert it to RGBA.
-    numcomps = image->numcomps;
-    if (!(pdf_smaks_in_data && numcomps == 4)) {
-      if (image->color_space != OPJ_CLRSPC_SYCC && numcomps == 3 &&
-          image->comps[0].dx == image->comps[0].dy && image->comps[1].dx != 1) {
-        image->color_space = OPJ_CLRSPC_SYCC;
-      } else if (numcomps <= 2) {
-        image->color_space = OPJ_CLRSPC_GRAY;
-      }
-
-      if (image->color_space == OPJ_CLRSPC_SYCC) {
-        color_sycc_to_rgb(image);
-      } else if (image->color_space == OPJ_CLRSPC_CMYK) {
-        color_cmyk_to_rgb(image);
-      } else if (image->color_space == OPJ_CLRSPC_EYCC) {
-        color_esycc_to_rgb(image);
-      }
-      convert_to_rgba = OPJ_TRUE;
-    }
-  } else if (numcomps > pdf_numcomps) {
-    numcomps = pdf_numcomps;
+  if (!opj_end_decompress(l_codec, l_stream)) {
+    opj_stream_destroy(l_stream);
+    opj_destroy_codec(l_codec);
+    opj_image_destroy(image);
+    return 1;
   }
 
-  if (!pdf_is_indexed_colormap) {
-    for (int i = 0; i < numcomps; i++) {
-      scale_component(&image->comps[i], 8);
-    }
-  }
-
-  OPJ_SIZE_T nb_pixels = image->x1 * image->y1;
-
-  if (convert_to_rgba) {
-    if (image->color_space == OPJ_CLRSPC_GRAY) {
-      if (image->numcomps == 1) {
-        gray_to_rgba(image->comps[0].data, nb_pixels);
-      } else if (pdf_smaks_in_data) {
-        graya_to_rgba(image->comps[0].data, image->comps[1].data, nb_pixels);
-      }
-    } else {
-      rgb_to_rgba(image->comps[0].data, image->comps[1].data,
-                  image->comps[2].data, nb_pixels);
-    }
-  } else {
-    switch (numcomps) {
-    case 1:
-      copy_pixels_1(image->comps[0].data, nb_pixels);
-      break;
-    case 3:
-      copy_pixels_3(image->comps[0].data, image->comps[1].data,
-                    image->comps[2].data, nb_pixels);
-      break;
-    case 4:
-      copy_pixels_4(image->comps[0].data, image->comps[1].data,
-                    image->comps[2].data, image->comps[3].data, nb_pixels);
-      break;
-    }
-  }
+  opj_stream_destroy(l_stream);
+  opj_destroy_codec(l_codec);
   opj_image_destroy(image);
-
   return 0;
 }

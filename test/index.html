@@ -1,0 +1,323 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>OpenJPEG JP2 Decoder Demo</title>
+    <style>
+      :root {
+        --bg-color: #ffffff;
+        --text-color: #333333;
+        --border-color: #dddddd;
+        --pre-bg-color: #f5f5f5;
+        --pre-text-color: #333333;
+        --status-success-bg: #d4edda;
+        --status-success-text: #155724;
+        --status-error-bg: #f8d7da;
+        --status-error-text: #721c24;
+        --button-bg: #4caf50;
+        --button-hover: #45a049;
+        --button-disabled: #cccccc;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg-color: #1a1a1a;
+          --text-color: #e0e0e0;
+          --border-color: #444444;
+          --pre-bg-color: #2d2d2d;
+          --pre-text-color: #e0e0e0;
+          --status-success-bg: #1e4620;
+          --status-success-text: #d4edda;
+          --status-error-bg: #4a1c1c;
+          --status-error-text: #f8d7da;
+          --button-bg: #2d5a2d;
+          --button-hover: #3d6a3d;
+          --button-disabled: #444444;
+        }
+      }
+
+      body {
+        font-family: Arial, sans-serif;
+        max-width: 900px;
+        margin: 0 auto;
+        padding: 20px;
+        line-height: 1.6;
+        background-color: var(--bg-color);
+        color: var(--text-color);
+      }
+      .container {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+      }
+      .image-container {
+        display: flex;
+        justify-content: center;
+        flex-wrap: wrap;
+        gap: 20px;
+        margin-top: 20px;
+      }
+      .image-box {
+        border: 1px solid var(--border-color);
+        padding: 10px;
+        margin-bottom: 20px;
+        text-align: center;
+      }
+      canvas {
+        max-width: 100%;
+        height: auto;
+        display: block;
+      }
+      pre {
+        background: var(--pre-bg-color);
+        color: var(--pre-text-color);
+        padding: 10px;
+        border-radius: 4px;
+        overflow: auto;
+        max-width: 100%;
+      }
+      .status {
+        margin: 20px 0;
+        padding: 10px;
+        border-radius: 4px;
+        text-align: center;
+      }
+      .status.success {
+        background-color: var(--status-success-bg);
+        color: var(--status-success-text);
+      }
+      .status.error {
+        background-color: var(--status-error-bg);
+        color: var(--status-error-text);
+      }
+      .loading {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 20px;
+        font-style: italic;
+      }
+      button {
+        background-color: var(--button-bg);
+        border: none;
+        color: white;
+        padding: 10px 20px;
+        text-align: center;
+        text-decoration: none;
+        display: inline-block;
+        font-size: 16px;
+        margin: 10px 2px;
+        cursor: pointer;
+        border-radius: 4px;
+      }
+      button:hover {
+        background-color: var(--button-hover);
+      }
+      button:disabled {
+        background-color: var(--button-disabled);
+        cursor: not-allowed;
+      }
+      input[type="file"] {
+        margin: 10px 0;
+        padding: 8px;
+        border: 1px solid var(--border-color);
+        border-radius: 4px;
+        background-color: var(--bg-color);
+        color: var(--text-color);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>OpenJPEG JP2 Decoder Demo</h1>
+      <p>
+        This demo loads and decodes a JP2 image using the OpenJPEG WebAssembly
+        module. Select a JP2 file to decode.
+      </p>
+
+      <input type="file" id="fileInput" accept=".jp2, .j2k, .jpx" />
+      <div id="status" class="status"></div>
+
+      <div id="loading" class="loading" style="display: none">
+        Loading... Please wait...
+      </div>
+
+      <div class="image-container">
+        <div class="image-box">
+          <h3>Decoded JP2 Image</h3>
+          <canvas id="canvas"></canvas>
+        </div>
+      </div>
+
+      <div>
+        <h3>Image Information:</h3>
+        <pre id="info"></pre>
+      </div>
+    </div>
+
+    <script type="module">
+      import OpenJPEG from "./../build/openjpeg.js";
+
+      const fileInput = document.getElementById("fileInput");
+      const statusDiv = document.getElementById("status");
+      const loadingDiv = document.getElementById("loading");
+      const canvas = document.getElementById("canvas");
+      const ctx = canvas.getContext("2d");
+      const infoDiv = document.getElementById("info");
+
+      let openJPEGModule = null;
+
+      async function initializeOpenJPEG() {
+        if (openJPEGModule) {
+          return openJPEGModule;
+        }
+        try {
+          openJPEGModule = await OpenJPEG({
+            print: (text) => console.log(text),
+            printErr: (text) => console.error(text),
+
+            locateFile: (path) => {
+              console.log(`Looking for: ${path}`);
+              return `../build/${path}`;
+            },
+
+            onRuntimeInitialized: () => {
+              console.log("OpenJPEG runtime initialized.");
+              fileInput.disabled = false;
+              statusDiv.textContent = "Ready. Select a JP2 file.";
+              statusDiv.className = "status";
+            },
+          });
+
+          return openJPEGModule;
+        } catch (error) {
+          console.error("Failed to initialize OpenJPEG:", error);
+          statusDiv.textContent = `Error initializing OpenJPEG: ${error.message}`;
+          statusDiv.className = "status error";
+          fileInput.disabled = true;
+          throw error;
+        }
+      }
+
+      function readFileAsArrayBuffer(file) {
+        return new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = (event) => resolve(event.target.result);
+          reader.onerror = (error) => reject(error);
+          reader.readAsArrayBuffer(file);
+        });
+      }
+
+      function decodeJP2(module, jp2Data) {
+        try {
+          const dataBuffer = new Uint8Array(jp2Data);
+          const dataPtr = module._malloc(dataBuffer.length);
+          module.HEAPU8.set(dataBuffer, dataPtr);
+
+          const numComps = 4;
+          const isIndexed = false;
+          const hasMask = false;
+
+          console.log("Calling jp2_decode...");
+          const result = module._jp2_decode(
+            dataPtr,
+            dataBuffer.length,
+            numComps,
+            isIndexed,
+            hasMask
+          );
+
+          module._free(dataPtr);
+
+          if (result !== 0) {
+            const errorMsg = module.errorMessages || "Unknown error during decoding";
+            throw new Error(`Decoding error (${result}): ${errorMsg}`);
+          }
+
+          return module.imageData;
+        } catch (error) {
+          console.error("Error decoding JP2:", error);
+          throw error;
+        }
+      }
+
+      function displayImage(module, imageData) {
+        const imgData = new ImageData(module.imageData, module.imageWidth, module.imageHeight);
+        canvas.width = imgData.width;
+        canvas.height = imgData.height;
+
+        ctx.putImageData(imgData, 0, 0);
+
+        infoDiv.textContent = JSON.stringify(
+          {
+            width: imgData.width,
+            height: imgData.height,
+            bytesPerPixel: 4,
+            totalPixels: imgData.width * imgData.height,
+          },
+          null,
+          2
+        );
+      }
+
+      async function processJP2Image(jp2Data) {
+        fileInput.disabled = true;
+        statusDiv.textContent = "";
+        statusDiv.className = "status";
+        loadingDiv.style.display = "flex";
+        infoDiv.textContent = "";
+
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        canvas.width = 0;
+        canvas.height = 0;
+
+        try {
+          console.log("Ensuring OpenJPEG module is initialized...");
+          const module = await initializeOpenJPEG();
+          console.log("Module initialized/ready.");
+          console.log("JP2 file loaded, size:", jp2Data.byteLength, "bytes");
+
+          console.log("Decoding JP2 data...");
+          const decodedImageData = decodeJP2(module, jp2Data);
+          console.log("JP2 decoded successfully");
+
+          displayImage(module, decodedImageData);
+
+          statusDiv.textContent = "JP2 image decoded successfully!";
+          statusDiv.className = "status success";
+        } catch (error) {
+          console.error("Error processing JP2 image:", error);
+          statusDiv.textContent = `Error: ${error.message}`;
+          statusDiv.className = "status error";
+        } finally {
+          loadingDiv.style.display = "none";
+          fileInput.disabled = false;
+        }
+      }
+
+      fileInput.addEventListener("change", async (event) => {
+        const file = event.target.files[0];
+        if (file) {
+          try {
+            statusDiv.textContent = `Loading file: ${file.name}...`;
+            statusDiv.className = "status";
+            loadingDiv.style.display = "flex";
+            const jp2Data = await readFileAsArrayBuffer(file);
+            await processJP2Image(jp2Data);
+          } catch (error) {
+            console.error("Error reading file:", error);
+            statusDiv.textContent = `Error reading file: ${error.message}`;
+            statusDiv.className = "status error";
+            loadingDiv.style.display = "none";
+            fileInput.disabled = false;
+          }
+        }
+      });
+
+      fileInput.disabled = true;
+      initializeOpenJPEG();
+
+    </script>
+  </body>
+</html>
