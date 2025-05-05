@@ -28,82 +28,94 @@ mergeInto(LibraryManager.library, {
     const message = UTF8ToString(message_ptr);
     (Module.warn || console.warn)(`OpenJPEG: ${message}`);
   },
-  setImageData: function (array_ptr, array_size, offset) {
-    Module.imageData.set(
-      Module.HEAPU8.subarray(array_ptr, array_ptr + array_size),
-      offset
-    );
+  initImageData: function (width, height) {
+    Module.imageData = new Uint8ClampedArray(width * height * 4);
+    Module.imageWidth = width;
+    Module.imageHeight = height;
   },
-  copy_pixels_1(compG_ptr, nb_pixels) {
+  copy_pixels_1(compG_ptr, nb_pixels, offset) {
+    if (nb_pixels <= 0) return;
     compG_ptr >>= 2;
-    const imageData = (Module.imageData = new Uint8ClampedArray(nb_pixels));
     const compG = HEAP32.subarray(compG_ptr, compG_ptr + nb_pixels);
-    imageData.set(compG);
+    for (let i = 0; i < nb_pixels; i++) {
+      const gray = compG[i];
+      Module.imageData[offset + 4 * i] = gray;
+      Module.imageData[offset + 4 * i + 1] = gray;
+      Module.imageData[offset + 4 * i + 2] = gray;
+      Module.imageData[offset + 4 * i + 3] = 0xff;
+    }
   },
-  copy_pixels_3(compR_ptr, compG_ptr, compB_ptr, nb_pixels) {
+  copy_pixels_3(compR_ptr, compG_ptr, compB_ptr, nb_pixels, offset) {
+    if (nb_pixels <= 0) return;
     compR_ptr >>= 2;
     compG_ptr >>= 2;
     compB_ptr >>= 2;
-    const imageData = (Module.imageData = new Uint8ClampedArray(nb_pixels * 3));
     const compR = HEAP32.subarray(compR_ptr, compR_ptr + nb_pixels);
     const compG = HEAP32.subarray(compG_ptr, compG_ptr + nb_pixels);
     const compB = HEAP32.subarray(compB_ptr, compB_ptr + nb_pixels);
     for (let i = 0; i < nb_pixels; i++) {
-      imageData[3 * i] = compR[i];
-      imageData[3 * i + 1] = compG[i];
-      imageData[3 * i + 2] = compB[i];
+      Module.imageData[offset + 4 * i] = compR[i];
+      Module.imageData[offset + 4 * i + 1] = compG[i];
+      Module.imageData[offset + 4 * i + 2] = compB[i];
+      Module.imageData[offset + 4 * i + 3] = 0xff;
     }
   },
-  copy_pixels_4(compR_ptr, compG_ptr, compB_ptr, compA_ptr, nb_pixels) {
+  copy_pixels_4(compR_ptr, compG_ptr, compB_ptr, compA_ptr, nb_pixels, offset) {
+    if (nb_pixels <= 0) return;
     compR_ptr >>= 2;
     compG_ptr >>= 2;
     compB_ptr >>= 2;
     compA_ptr >>= 2;
-    const imageData = (Module.imageData = new Uint8ClampedArray(nb_pixels * 4));
     const compR = HEAP32.subarray(compR_ptr, compR_ptr + nb_pixels);
     const compG = HEAP32.subarray(compG_ptr, compG_ptr + nb_pixels);
     const compB = HEAP32.subarray(compB_ptr, compB_ptr + nb_pixels);
     const compA = HEAP32.subarray(compA_ptr, compA_ptr + nb_pixels);
     for (let i = 0; i < nb_pixels; i++) {
-      imageData[4 * i] = compR[i];
-      imageData[4 * i + 1] = compG[i];
-      imageData[4 * i + 2] = compB[i];
-      imageData[4 * i + 3] = compA[i];
+      Module.imageData[offset + 4 * i] = compR[i];
+      Module.imageData[offset + 4 * i + 1] = compG[i];
+      Module.imageData[offset + 4 * i + 2] = compB[i];
+      Module.imageData[offset + 4 * i + 3] = compA[i];
     }
   },
-  gray_to_rgba(compG_ptr, nb_pixels) {
+  gray_to_rgba(compG_ptr, nb_pixels, offset) {
+    if (nb_pixels <= 0) return;
     compG_ptr >>= 2;
-    const imageData = (Module.imageData = new Uint8ClampedArray(nb_pixels * 4));
     const compG = HEAP32.subarray(compG_ptr, compG_ptr + nb_pixels);
     for (let i = 0; i < nb_pixels; i++) {
-      imageData[4 * i] = imageData[4 * i + 1] = imageData[4 * i + 2] = compG[i];
-      imageData[4 * i + 3] = 0xff;
+      const gray = compG[i];
+      Module.imageData[offset + 4 * i] = gray;
+      Module.imageData[offset + 4 * i + 1] = gray;
+      Module.imageData[offset + 4 * i + 2] = gray;
+      Module.imageData[offset + 4 * i + 3] = 0xff;
     }
   },
-  graya_to_rgba(compG_ptr, compA_ptr, nb_pixels) {
+  graya_to_rgba(compG_ptr, compA_ptr, nb_pixels, offset) {
+    if (nb_pixels <= 0) return;
     compG_ptr >>= 2;
     compA_ptr >>= 2;
-    const imageData = (Module.imageData = new Uint8ClampedArray(nb_pixels * 4));
     const compG = HEAP32.subarray(compG_ptr, compG_ptr + nb_pixels);
     const compA = HEAP32.subarray(compA_ptr, compA_ptr + nb_pixels);
     for (let i = 0; i < nb_pixels; i++) {
-      imageData[4 * i] = imageData[4 * i + 1] = imageData[4 * i + 2] = compG[i];
-      imageData[4 * i + 3] = compA[i];
+      const gray = compG[i];
+      Module.imageData[offset + 4 * i] = gray;
+      Module.imageData[offset + 4 * i + 1] = gray;
+      Module.imageData[offset + 4 * i + 2] = gray;
+      Module.imageData[offset + 4 * i + 3] = compA[i];
     }
   },
-  rgb_to_rgba(compR_ptr, compG_ptr, compB_ptr, nb_pixels) {
+  rgb_to_rgba(compR_ptr, compG_ptr, compB_ptr, nb_pixels, offset) {
+    if (nb_pixels <= 0) return;
     compR_ptr >>= 2;
     compG_ptr >>= 2;
     compB_ptr >>= 2;
-    const imageData = (Module.imageData = new Uint8ClampedArray(nb_pixels * 4));
     const compR = HEAP32.subarray(compR_ptr, compR_ptr + nb_pixels);
     const compG = HEAP32.subarray(compG_ptr, compG_ptr + nb_pixels);
     const compB = HEAP32.subarray(compB_ptr, compB_ptr + nb_pixels);
     for (let i = 0; i < nb_pixels; i++) {
-      imageData[4 * i] = compR[i];
-      imageData[4 * i + 1] = compG[i];
-      imageData[4 * i + 2] = compB[i];
-      imageData[4 * i + 3] = 0xff;
+      Module.imageData[offset + 4 * i] = compR[i];
+      Module.imageData[offset + 4 * i + 1] = compG[i];
+      Module.imageData[offset + 4 * i + 2] = compB[i];
+      Module.imageData[offset + 4 * i + 3] = 0xff;
     }
   },
   storeErrorMessage: function (message_ptr) {
