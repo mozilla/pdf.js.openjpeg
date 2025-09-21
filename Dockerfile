@@ -1,7 +1,7 @@
 FROM emscripten/emsdk:latest
 WORKDIR /tmp
 
-ENV OPENJPEG_GIT_HASH 6e92b398dc8e0bf1c2d39dc01f4e9f94b15e75f7
+ENV OPENJPEG_GIT_HASH 6c4a29b00211eb0430fa0e5e890f1ce5c80f409f
 ADD *.patch .
 
 RUN git config --global user.email "you@example.com" && \
