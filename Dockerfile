@@ -1,7 +1,7 @@
 FROM emscripten/emsdk:latest
 WORKDIR /tmp
 
-ENV OPENJPEG_GIT_HASH 6c4a29b00211eb0430fa0e5e890f1ce5c80f409f
+ENV OPENJPEG_GIT_HASH=6c4a29b00211eb0430fa0e5e890f1ce5c80f409f
 ADD *.patch .
 
 RUN git config --global user.email "you@example.com" && \
@@ -12,20 +12,16 @@ RUN git config --global user.email "you@example.com" && \
     git am ../0001-Add-support-for-buffer-based-stream-see-https-github.patch && \
     cd ..
 
-ENV OUTPUT /js
-ENV OPENJPEG /tmp/openjpeg
-ENV INPUT /code/src
+ENV OUTPUT=/js
+ENV OPENJPEG=/tmp/openjpeg
+ENV INPUT=/code/src
 
 ADD compile_lib.sh .
 
-ENV BUILD_TYPE wasm
-ENV BUILD_DIR build_${BUILD_TYPE}
+ENV BUILD_TYPE=wasm
 RUN ./compile_lib.sh
 
-ENV BUILD_TYPE js
-ENV BUILD_DIR build_${BUILD_TYPE}
+ENV BUILD_TYPE=js
 RUN ./compile_lib.sh
 
-ENV BUILD_DIR ""
-
-CMD /code/compile.sh
+CMD ["/bin/sh", "-c", "/code/compile.sh"]

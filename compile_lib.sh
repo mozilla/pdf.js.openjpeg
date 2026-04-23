@@ -1,3 +1,5 @@
+#!/bin/sh
+
 # Copyright (c) 2024, Mozilla Foundation
 #
 # Redistribution and use in source and binary forms, with or without
@@ -21,24 +23,26 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#!/bin/sh
+set -e
+
+OPENJPEG=${OPENJPEG:=..}
+BUILD_TYPE=${BUILD_TYPE:=wasm}
+BUILD_DIR=${BUILD_DIR:=build_${BUILD_TYPE}}
+export EM_CACHE="/tmp/em_cache_${BUILD_TYPE}"
 
 if [ "$BUILD_TYPE" = "js" ]
 then
     CFLAGS="-Oz"
-    WASM=0
 else
-    CFLAGS="-O3 -msimd128 -msse"
-    WASM=1
+    CFLAGS="-O3 -msimd128 -msse -mrelaxed-simd"
 fi
 
-cd openjpeg && \
-    mkdir -p ${BUILD_DIR} && cd ${BUILD_DIR} && \
+cd "${OPENJPEG}" && \
+    mkdir -p "${BUILD_DIR}" && cd "${BUILD_DIR}" && \
     emcmake cmake .. \
     -DCMAKE_C_FLAGS="${CFLAGS}" \
     -DBUILD_SHARED_LIBS=OFF \
     -DBUILD_STATIC_LIBS=ON \
     -DOPJ_USE_THREAD=OFF \
     -DCMAKE_BUILD_TYPE=Release && \
-    emmake make openjp2 && \
-    emcc --clear-cache
+    emmake make openjp2

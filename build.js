@@ -27,49 +27,59 @@
 
 const { ArgumentParser } = require("argparse");
 const fs = require("fs");
-const { spawn, exec } = require("child_process");
+const { spawn } = require("child_process");
 const { resolve } = require("path");
 
 function execAndPrint(fun, args) {
-  const child = spawn(fun, args.split(" "), { stdio: "inherit" });
-  return new Promise((res) => {
-    child.on("close", res);
+  const child = spawn(fun, args, { stdio: "inherit" });
+  return new Promise((resolve, reject) => {
+    child.on("error", reject);
+    child.on("close", (code) => {
+      if (code === 0) {
+        resolve();
+        return;
+      }
+      reject(new Error(`${fun} exited with code ${code}`));
+    });
   });
 }
 
 function create() {
-  return execAndPrint("docker", `build -t openjpeg-decoder .`);
+  return execAndPrint("docker", ["build", "-t", "openjpeg-decoder", "."]);
 }
 
 function build(type, path) {
   const workingDir = resolve(".");
-  return execAndPrint(
-    "docker",
-    `run -t -v ${path}:/js -v ${workingDir}:/code --env BUILD_TYPE=${type} --rm openjpeg-decoder`
-  );
+  return execAndPrint("docker", [
+    "run",
+    "-t",
+    "-v",
+    `${path}:/js`,
+    "-v",
+    `${workingDir}:/code`,
+    "--env",
+    `BUILD_TYPE=${type}`,
+    "--rm",
+    "openjpeg-decoder",
+  ]);
 }
 
-function compile(type, path) {
+async function hasImage() {
+  try {
+    await execAndPrint("docker", ["image", "inspect", "openjpeg-decoder"]);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function compile(type, path) {
   path = resolve(path);
-  fs.access(path, fs.constants.F_OK, (err) => {
-    if (err) {
-      console.log(`Invalid path: ${path}`);
-      return;
-    }
-    exec("docker images openjpeg-decoder", (err, stdout) => {
-      const output = stdout
-        .split("\n")
-        .map((line) => line.trim())
-        .filter((line) => Boolean(line));
-      if (output.length === 1) {
-        create().then(() => {
-          build(type, path);
-        });
-      } else {
-        build(type, path);
-      }
-    });
-  });
+  await fs.promises.access(path, fs.constants.F_OK);
+  if (!(await hasImage())) {
+    await create();
+  }
+  await build(type, path);
 }
 
 const parser = new ArgumentParser({
@@ -94,12 +104,17 @@ parser.add_argument("-t", "--type", {
 });
 
 const args = parser.parse_args();
-if (args.create) {
-  create().then(() => {
-    if (args.compile) {
-      compile(args.type, args.output);
-    }
-  });
-} else if (args.compile) {
-  compile(args.type, args.output);
+
+async function main() {
+  if (args.create) {
+    await create();
+  }
+  if (args.compile) {
+    await compile(args.type, args.output);
+  }
 }
+
+main().catch((error) => {
+  console.error(error.message);
+  process.exitCode = 1;
+});

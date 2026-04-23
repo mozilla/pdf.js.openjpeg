@@ -1,3 +1,5 @@
+#!/bin/sh
+
 # Copyright (c) 2024, Mozilla Foundation
 #
 # Redistribution and use in source and binary forms, with or without
@@ -21,7 +23,7 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#!/bin/sh
+set -e
 
 BUILD_TYPE=${BUILD_TYPE:=wasm}
 BUILD_DIR=${BUILD_DIR:=build_${BUILD_TYPE}}
@@ -29,6 +31,7 @@ INPUT=${INPUT:=src}
 OUTPUT=${OUTPUT:=.}
 OPENJPEG=${OPENJPEG:=..}
 OPENJPEG_BUILD=${OPENJPEG_BUILD:=${OPENJPEG}/${BUILD_DIR}}
+export EM_CACHE="/tmp/em_cache_${BUILD_TYPE}"
 
 echo "Building ${BUILD_TYPE} from ${BUILD_DIR} to ${OUTPUT}..."
 
@@ -39,20 +42,20 @@ then
     WASM=0
 else
     OUTPUT_FILE="openjpeg.js"
-    CFLAGS="-O3 -msimd128 -msse"
+    CFLAGS="-O3 -msimd128 -msse -mrelaxed-simd"
     WASM=1
 fi
 
-emcc -o ${OUTPUT}/${OUTPUT_FILE} \
-        ${OPENJPEG_BUILD}/bin/libopenjp2.a \
-        ${OPENJPEG}/src/bin/jp2/convert.c \
-        ${OPENJPEG}/src/bin/common/color.c \
-        ${INPUT}/decoder.c \
-        -I${OPENJPEG}/src/lib/openjp2 \
-        -I${OPENJPEG}/src/bin/jp2/ \
-        -I${OPENJPEG}/src/bin/common/ \
-        -I${OPENJPEG_BUILD}/src/lib/openjp2 \
-        -I${OPENJPEG_BUILD}/src/bin/common \
+emcc -o "${OUTPUT}/${OUTPUT_FILE}" \
+        "${OPENJPEG_BUILD}/bin/libopenjp2.a" \
+        "${OPENJPEG}/src/bin/jp2/convert.c" \
+        "${OPENJPEG}/src/bin/common/color.c" \
+        "${INPUT}/decoder.c" \
+        -I"${OPENJPEG}/src/lib/openjp2" \
+        -I"${OPENJPEG}/src/bin/jp2/" \
+        -I"${OPENJPEG}/src/bin/common/" \
+        -I"${OPENJPEG_BUILD}/src/lib/openjp2" \
+        -I"${OPENJPEG_BUILD}/src/bin/common" \
         -s ALLOW_MEMORY_GROWTH=1 \
         -s MAXIMUM_MEMORY=2GB \
         -s WASM=${WASM} \
@@ -66,18 +69,18 @@ emcc -o ${OUTPUT}/${OUTPUT_FILE} \
         -s NO_FILESYSTEM=1 \
         -s NO_EXIT_RUNTIME=1 \
         -s MALLOC=emmalloc \
-        -s EXPORTED_FUNCTIONS='["_jp2_decode", "_malloc", "_free", "writeArrayToMemory"]' \
-        -s AGGRESSIVE_VARIABLE_ELIMINATION=1 \
+        -s EXPORTED_FUNCTIONS='["_jp2_decode", "_malloc", "_free"]' \
+        -s EXPORTED_RUNTIME_METHODS='["writeArrayToMemory"]' \
         -s ASSERTIONS=0 \
         -DNDEBUG \
         -flto \
         ${CFLAGS} \
-        --js-library ${INPUT}/myjs.js
+        --js-library "${INPUT}/myjs.js"
 
 if [ "$BUILD_TYPE" = "wasm" ]
 then
-    chmod ugo-x ${OUTPUT}/openjpeg.wasm
+    chmod ugo-x "${OUTPUT}/openjpeg.wasm"
 fi
-sed -i '1 i\/* THIS FILE IS GENERATED - DO NOT EDIT */' ${OUTPUT}/${OUTPUT_FILE}
+sed -i '1 i\/* THIS FILE IS GENERATED - DO NOT EDIT */' "${OUTPUT}/${OUTPUT_FILE}"
 
 # -s ASSERTIONS=2 -s SAFE_HEAP=1 -s STACK_OVERFLOW_CHECK=2 -O0 -g4 \
