@@ -69,6 +69,79 @@ static void quiet_callback(const char *msg, void *client_data) {
   (void)client_data;
 }
 
+static inline OPJ_UINT32 ceil_div(OPJ_UINT32 a, OPJ_UINT32 b) {
+  return (OPJ_UINT32)(((OPJ_UINT64)a + b - 1) / b);
+}
+
+static inline OPJ_UINT32 ceil_div_pow2(OPJ_UINT32 a, OPJ_UINT32 b) {
+  return (OPJ_UINT32)(((OPJ_UINT64)a + (1ULL << b) - 1) >> b);
+}
+
+static inline OPJ_UINT32 get_sample_index(OPJ_UINT32 origin, OPJ_UINT32 i,
+                                          OPJ_UINT32 d, OPJ_UINT32 comp_origin,
+                                          OPJ_UINT32 size) {
+  OPJ_INT64 index = (OPJ_INT64)(((OPJ_UINT64)origin + i) / d) - comp_origin;
+  if (index < 0) {
+    return 0;
+  }
+  return index >= size ? size - 1 : (OPJ_UINT32)index;
+}
+
+static OPJ_BOOL upsample_component(const opj_image_t *image,
+                                   opj_image_comp_t *comp, OPJ_UINT32 width,
+                                   OPJ_UINT32 height) {
+  if (comp->w == width && comp->h == height) {
+    return OPJ_TRUE;
+  }
+  if (unlikely(!comp->data || !comp->w || !comp->h || !comp->dx ||
+               !comp->dy ||
+               (OPJ_UINT64)width * height >
+                   (OPJ_SIZE_T)-1 / sizeof(OPJ_INT32))) {
+    return OPJ_FALSE;
+  }
+
+  OPJ_INT32 *data =
+      opj_image_data_alloc((OPJ_SIZE_T)width * height * sizeof(OPJ_INT32));
+  OPJ_UINT32 *x_indices = malloc(width * sizeof(OPJ_UINT32));
+  if (unlikely(!data || !x_indices)) {
+    opj_image_data_free(data);
+    free(x_indices);
+    return OPJ_FALSE;
+  }
+
+  const OPJ_UINT32 factor = comp->factor;
+  const OPJ_UINT32 x0 = ceil_div_pow2(image->x0, factor);
+  const OPJ_UINT32 y0 = ceil_div_pow2(image->y0, factor);
+  const OPJ_UINT32 comp_x0 =
+      ceil_div_pow2(ceil_div(image->x0, comp->dx), factor);
+  const OPJ_UINT32 comp_y0 =
+      ceil_div_pow2(ceil_div(image->y0, comp->dy), factor);
+
+  for (OPJ_UINT32 x = 0; x < width; x++) {
+    x_indices[x] = get_sample_index(x0, x, comp->dx, comp_x0, comp->w);
+  }
+
+  OPJ_INT32 *dst = data;
+  for (OPJ_UINT32 y = 0; y < height; y++, dst += width) {
+    const OPJ_INT32 *src =
+        comp->data +
+        (OPJ_SIZE_T)get_sample_index(y0, y, comp->dy, comp_y0, comp->h) *
+            comp->w;
+    for (OPJ_UINT32 x = 0; x < width; x++) {
+      dst[x] = src[x_indices[x]];
+    }
+  }
+  free(x_indices);
+
+  opj_image_data_free(comp->data);
+  comp->data = data;
+  comp->w = width;
+  comp->h = height;
+  comp->dx = comp->dy = 1;
+
+  return OPJ_TRUE;
+}
+
 int EMSCRIPTEN_KEEPALIVE jp2_decode(OPJ_UINT8 *data, OPJ_SIZE_T data_size,
                                     OPJ_UINT32 pdf_numcomps,
                                     OPJ_BOOL pdf_is_indexed_colormap,
@@ -220,6 +293,7 @@ int EMSCRIPTEN_KEEPALIVE jp2_decode(OPJ_UINT8 *data, OPJ_SIZE_T data_size,
       } else if (image->color_space == OPJ_CLRSPC_EYCC) {
         color_esycc_to_rgb(image);
       }
+      numcomps = image->numcomps;
       convert_to_rgba = OPJ_TRUE;
     }
   } else {
@@ -235,7 +309,20 @@ int EMSCRIPTEN_KEEPALIVE jp2_decode(OPJ_UINT8 *data, OPJ_SIZE_T data_size,
     }
   }
 
-  OPJ_SIZE_T nb_pixels = image->comps[0].w * image->comps[0].h;
+  const OPJ_UINT32 factor = image->comps[0].factor;
+  const OPJ_UINT32 width =
+      ceil_div_pow2(image->x1, factor) - ceil_div_pow2(image->x0, factor);
+  const OPJ_UINT32 height =
+      ceil_div_pow2(image->y1, factor) - ceil_div_pow2(image->y0, factor);
+  for (OPJ_UINT32 i = 0; i < numcomps; i++) {
+    if (unlikely(!upsample_component(image, &image->comps[i], width, height))) {
+      storeErrorMessage("Failed to upsample the image");
+      opj_image_destroy(image);
+      return 1;
+    }
+  }
+
+  OPJ_SIZE_T nb_pixels = (OPJ_SIZE_T)width * height;
 
   if (convert_to_rgba) {
     if (image->color_space == OPJ_CLRSPC_GRAY) {
