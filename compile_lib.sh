@@ -34,15 +34,33 @@ if [ "$BUILD_TYPE" = "js" ]
 then
     CFLAGS="-Oz"
 else
-    CFLAGS="-O3 -msimd128 -msse -mrelaxed-simd"
+    # Enable OpenJPEG's SSE2 paths for the 5/3 wavelet and reversible MCT.
+    SIMD_CFLAGS="-msimd128 -msse2 -mrelaxed-simd"
+    CFLAGS="-Os ${SIMD_CFLAGS}"
+    # Keep -O3 for these decoding kernels; use -Os for the rest.
+    HOT_FILES="t1 ht_dec mct tcd sparse_array"
+    HOT_CFLAGS="-O3 ${SIMD_CFLAGS}"
 fi
 
+# Set Release flags directly: the default -O3 overrides CMAKE_C_FLAGS.
 cd "${OPENJPEG}" && \
     mkdir -p "${BUILD_DIR}" && cd "${BUILD_DIR}" && \
     emcmake cmake .. \
-    -DCMAKE_C_FLAGS="${CFLAGS}" \
+    -DCMAKE_C_FLAGS_RELEASE="${CFLAGS} -DNDEBUG" \
     -DBUILD_SHARED_LIBS=OFF \
     -DBUILD_STATIC_LIBS=ON \
     -DOPJ_USE_THREAD=OFF \
     -DCMAKE_BUILD_TYPE=Release && \
     emmake make openjp2
+
+if [ -n "${HOT_FILES}" ]
+then
+    mkdir -p hot
+    for FILE in ${HOT_FILES}
+    do
+        emcc ${HOT_CFLAGS} -DNDEBUG -Isrc/lib/openjp2 \
+            -c "../src/lib/openjp2/${FILE}.c" -o "hot/${FILE}.c.o"
+    done
+    # Replace the corresponding archive members.
+    emar rs bin/libopenjp2.a hot/*.c.o
+fi

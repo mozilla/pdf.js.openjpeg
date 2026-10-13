@@ -25,6 +25,7 @@
  */
 
 // clang-format off
+#include <stdarg.h>
 #include "emscripten.h"
 #include "openjpeg.h"
 #include "color.h"
@@ -64,9 +65,16 @@ static void warning_callback(const char *msg, void *client_data) {
   jsPrintWarning(msg);
 }
 
-static void quiet_callback(const char *msg, void *client_data) {
-  (void)msg;
-  (void)client_data;
+// Decoder diagnostics need no float formatting; see --wrap in compile.sh.
+int vsniprintf(char *, size_t, const char *, va_list);
+int __wrap_vsnprintf(char *str, size_t size, const char *format, va_list ap) {
+  return vsniprintf(str, size, format, ap);
+}
+
+// Use OpenJPEG's defaults without linking libc environment initialization.
+char *__wrap_getenv(const char *name) {
+  (void)name;
+  return NULL;
 }
 
 static inline OPJ_UINT32 ceil_div(OPJ_UINT32 a, OPJ_UINT32 b) {
@@ -165,7 +173,8 @@ int EMSCRIPTEN_KEEPALIVE jp2_decode(OPJ_UINT8 *data, OPJ_SIZE_T data_size,
     return 1;
   }
 
-  opj_set_info_handler(l_codec, quiet_callback, 00);
+  // A null handler skips info message formatting.
+  opj_set_info_handler(l_codec, 00, 00);
   opj_set_warning_handler(l_codec, warning_callback, 00);
   opj_set_error_handler(l_codec, error_callback, 00);
 

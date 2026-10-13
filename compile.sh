@@ -33,24 +33,39 @@ TERSER="${EMSDK}/upstream/emscripten/node_modules/.bin/terser"
 TMP_DIR=$(mktemp -d)
 trap 'rm -rf "${TMP_DIR}"' EXIT
 
+OBJ_DIR="${TMP_DIR}/obj"
+mkdir -p "${OBJ_DIR}"
+
+echo "Compiling the decoder to ${OBJ_DIR}..."
+
+# Reuse objects to keep minified import names consistent between builds.
+for FILE in "${OPENJPEG}/src/bin/jp2/convert.c" \
+    "${OPENJPEG}/src/bin/common/color.c" \
+    "${INPUT}/decoder.c"
+do
+    EM_CACHE="/tmp/em_cache_wasm" emcc -c "${FILE}" \
+        -o "${OBJ_DIR}/$(basename "${FILE}" .c).o" \
+        -I"${OPENJPEG}/src/lib/openjp2" \
+        -I"${OPENJPEG}/src/bin/jp2/" \
+        -I"${OPENJPEG}/src/bin/common/" \
+        -I"${OPENJPEG}/build_wasm/src/lib/openjp2" \
+        -I"${OPENJPEG}/build_wasm/src/bin/common" \
+        -DNDEBUG \
+        -Os
+done
+
 build() {
     BUILD_TYPE=$1
     OUTPUT_FILE=$2
-    CFLAGS=$3
+    LDFLAGS=$3
     OPENJPEG_BUILD="${OPENJPEG}/build_${BUILD_TYPE}"
 
     echo "Building ${BUILD_TYPE} from ${OPENJPEG_BUILD} to ${OUTPUT_FILE}..."
 
+    # Omit LTO: it increased binary size in the measured builds.
     EM_CACHE="/tmp/em_cache_${BUILD_TYPE}" emcc -o "${OUTPUT_FILE}" \
         "${OPENJPEG_BUILD}/bin/libopenjp2.a" \
-        "${OPENJPEG}/src/bin/jp2/convert.c" \
-        "${OPENJPEG}/src/bin/common/color.c" \
-        "${INPUT}/decoder.c" \
-        -I"${OPENJPEG}/src/lib/openjp2" \
-        -I"${OPENJPEG}/src/bin/jp2/" \
-        -I"${OPENJPEG}/src/bin/common/" \
-        -I"${OPENJPEG_BUILD}/src/lib/openjp2" \
-        -I"${OPENJPEG_BUILD}/src/bin/common" \
+        "${OBJ_DIR}"/*.o \
         -s ALLOW_MEMORY_GROWTH=1 \
         -s MAXIMUM_MEMORY=2GB \
         -s MODULARIZE=1 \
@@ -65,13 +80,13 @@ build() {
         -s EXPORTED_FUNCTIONS='["_jp2_decode", "_malloc", "_free"]' \
         -s EXPORTED_RUNTIME_METHODS='["writeArrayToMemory"]' \
         -s ASSERTIONS=0 \
-        -DNDEBUG \
-        -flto \
-        ${CFLAGS} \
+        -Wl,--wrap=getenv \
+        -Wl,--wrap=vsnprintf \
+        ${LDFLAGS} \
         --js-library "${INPUT}/myjs.js"
 }
 
-build wasm "${OUTPUT}/openjpeg.js" "-O3 -msimd128 -msse -mrelaxed-simd"
+build wasm "${OUTPUT}/openjpeg.js" "-O3"
 chmod ugo-x "${OUTPUT}/openjpeg.wasm"
 
 build js "${TMP_DIR}/openjpeg.js" "-Oz"
