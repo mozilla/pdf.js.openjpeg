@@ -71,6 +71,17 @@ mergeInto(LibraryManager.library, {
       imageData[4 * i + 3] = compA[i];
     }
   },
+  init_pixels(size) {
+    Module.imageData = new Uint8ClampedArray(size);
+  },
+  copy_component(comp_ptr, index, nb_comps, nb_pixels) {
+    comp_ptr >>= 2;
+    const imageData = Module.imageData;
+    const comp = HEAP32.subarray(comp_ptr, comp_ptr + nb_pixels);
+    for (let i = 0, j = index; i < nb_pixels; i++, j += nb_comps) {
+      imageData[j] = comp[i];
+    }
+  },
   gray_to_rgba(compG_ptr, nb_pixels) {
     compG_ptr >>= 2;
     const imageData = (Module.imageData = new Uint8ClampedArray(nb_pixels * 4));

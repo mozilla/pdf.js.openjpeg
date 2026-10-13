@@ -49,6 +49,8 @@ extern void copy_pixels_1(OPJ_INT32 *, OPJ_SIZE_T);
 extern void copy_pixels_3(OPJ_INT32 *, OPJ_INT32 *, OPJ_INT32 *, OPJ_SIZE_T);
 extern void copy_pixels_4(OPJ_INT32 *, OPJ_INT32 *, OPJ_INT32 *, OPJ_INT32 *,
                           OPJ_SIZE_T);
+extern void init_pixels(OPJ_SIZE_T);
+extern void copy_component(OPJ_INT32 *, OPJ_UINT32, OPJ_UINT32, OPJ_SIZE_T);
 extern void gray_to_rgba(OPJ_INT32 *, OPJ_SIZE_T);
 extern void graya_to_rgba(OPJ_INT32 *, OPJ_INT32 *, OPJ_SIZE_T);
 extern void rgb_to_rgba(OPJ_INT32 *, OPJ_INT32 *, OPJ_INT32 *, OPJ_SIZE_T);
@@ -71,7 +73,8 @@ int EMSCRIPTEN_KEEPALIVE jp2_decode(OPJ_UINT8 *data, OPJ_SIZE_T data_size,
                                     OPJ_UINT32 pdf_numcomps,
                                     OPJ_BOOL pdf_is_indexed_colormap,
                                     OPJ_BOOL pdf_smaks_in_data,
-                                    OPJ_UINT32 pdf_reduce_factor) {
+                                    OPJ_UINT32 pdf_reduce_factor,
+                                    OPJ_BOOL pdf_pad_numcomps) {
   opj_dparameters_t parameters;
   opj_codec_t *l_codec = NULL;
   opj_image_t *image = NULL;
@@ -195,6 +198,7 @@ int EMSCRIPTEN_KEEPALIVE jp2_decode(OPJ_UINT8 *data, OPJ_SIZE_T data_size,
   }
 
   OPJ_UINT32 numcomps = image->numcomps;
+  OPJ_UINT32 out_numcomps = numcomps;
   OPJ_BOOL convert_to_rgba = OPJ_FALSE;
 
   if (pdf_numcomps <= 0) {
@@ -218,8 +222,11 @@ int EMSCRIPTEN_KEEPALIVE jp2_decode(OPJ_UINT8 *data, OPJ_SIZE_T data_size,
       }
       convert_to_rgba = OPJ_TRUE;
     }
-  } else if (numcomps > pdf_numcomps) {
-    numcomps = pdf_numcomps;
+  } else {
+    if (numcomps > pdf_numcomps) {
+      numcomps = pdf_numcomps;
+    }
+    out_numcomps = pdf_pad_numcomps ? pdf_numcomps : numcomps;
   }
 
   if (!pdf_is_indexed_colormap) {
@@ -232,28 +239,27 @@ int EMSCRIPTEN_KEEPALIVE jp2_decode(OPJ_UINT8 *data, OPJ_SIZE_T data_size,
 
   if (convert_to_rgba) {
     if (image->color_space == OPJ_CLRSPC_GRAY) {
-      if (image->numcomps == 1) {
-        gray_to_rgba(image->comps[0].data, nb_pixels);
-      } else if (pdf_smaks_in_data) {
+      if (image->numcomps >= 2 && pdf_smaks_in_data) {
         graya_to_rgba(image->comps[0].data, image->comps[1].data, nb_pixels);
+      } else {
+        gray_to_rgba(image->comps[0].data, nb_pixels);
       }
     } else {
       rgb_to_rgba(image->comps[0].data, image->comps[1].data,
                   image->comps[2].data, nb_pixels);
     }
+  } else if (numcomps == out_numcomps && numcomps == 1) {
+    copy_pixels_1(image->comps[0].data, nb_pixels);
+  } else if (numcomps == out_numcomps && numcomps == 3) {
+    copy_pixels_3(image->comps[0].data, image->comps[1].data,
+                  image->comps[2].data, nb_pixels);
+  } else if (numcomps == out_numcomps && numcomps == 4) {
+    copy_pixels_4(image->comps[0].data, image->comps[1].data,
+                  image->comps[2].data, image->comps[3].data, nb_pixels);
   } else {
-    switch (numcomps) {
-    case 1:
-      copy_pixels_1(image->comps[0].data, nb_pixels);
-      break;
-    case 3:
-      copy_pixels_3(image->comps[0].data, image->comps[1].data,
-                    image->comps[2].data, nb_pixels);
-      break;
-    case 4:
-      copy_pixels_4(image->comps[0].data, image->comps[1].data,
-                    image->comps[2].data, image->comps[3].data, nb_pixels);
-      break;
+    init_pixels(nb_pixels * out_numcomps);
+    for (OPJ_UINT32 i = 0; i < numcomps; i++) {
+      copy_component(image->comps[i].data, i, out_numcomps, nb_pixels);
     }
   }
   opj_image_destroy(image);
