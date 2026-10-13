@@ -25,28 +25,23 @@
 
 set -e
 
-BUILD_TYPE=${BUILD_TYPE:=wasm}
-BUILD_DIR=${BUILD_DIR:=build_${BUILD_TYPE}}
 INPUT=${INPUT:=src}
 OUTPUT=${OUTPUT:=.}
 OPENJPEG=${OPENJPEG:=..}
-OPENJPEG_BUILD=${OPENJPEG_BUILD:=${OPENJPEG}/${BUILD_DIR}}
-export EM_CACHE="/tmp/em_cache_${BUILD_TYPE}"
+WASM2JS="${EMSDK}/upstream/bin/wasm2js"
+TERSER="${EMSDK}/upstream/emscripten/node_modules/.bin/terser"
+TMP_DIR=$(mktemp -d)
+trap 'rm -rf "${TMP_DIR}"' EXIT
 
-echo "Building ${BUILD_TYPE} from ${BUILD_DIR} to ${OUTPUT}..."
+build() {
+    BUILD_TYPE=$1
+    OUTPUT_FILE=$2
+    CFLAGS=$3
+    OPENJPEG_BUILD="${OPENJPEG}/build_${BUILD_TYPE}"
 
-if [ "$BUILD_TYPE" = "js" ]
-then
-    OUTPUT_FILE="openjpeg_nowasm_fallback.js"
-    CFLAGS="-Oz"
-    WASM=0
-else
-    OUTPUT_FILE="openjpeg.js"
-    CFLAGS="-O3 -msimd128 -msse -mrelaxed-simd"
-    WASM=1
-fi
+    echo "Building ${BUILD_TYPE} from ${OPENJPEG_BUILD} to ${OUTPUT_FILE}..."
 
-emcc -o "${OUTPUT}/${OUTPUT_FILE}" \
+    EM_CACHE="/tmp/em_cache_${BUILD_TYPE}" emcc -o "${OUTPUT_FILE}" \
         "${OPENJPEG_BUILD}/bin/libopenjp2.a" \
         "${OPENJPEG}/src/bin/jp2/convert.c" \
         "${OPENJPEG}/src/bin/common/color.c" \
@@ -58,10 +53,8 @@ emcc -o "${OUTPUT}/${OUTPUT_FILE}" \
         -I"${OPENJPEG_BUILD}/src/bin/common" \
         -s ALLOW_MEMORY_GROWTH=1 \
         -s MAXIMUM_MEMORY=2GB \
-        -s WASM=${WASM} \
         -s MODULARIZE=1 \
         -s EXPORT_NAME="'OpenJPEG'" \
-        -s WASM_ASYNC_COMPILATION=${WASM} \
         -s EXPORT_ES6=1 \
         -s SINGLE_FILE=0 \
         -s ENVIRONMENT='web' \
@@ -76,11 +69,35 @@ emcc -o "${OUTPUT}/${OUTPUT_FILE}" \
         -flto \
         ${CFLAGS} \
         --js-library "${INPUT}/myjs.js"
+}
 
-if [ "$BUILD_TYPE" = "wasm" ]
-then
-    chmod ugo-x "${OUTPUT}/openjpeg.wasm"
-fi
-sed -i '1 i\/* THIS FILE IS GENERATED - DO NOT EDIT */' "${OUTPUT}/${OUTPUT_FILE}"
+build wasm "${OUTPUT}/openjpeg.js" "-O3 -msimd128 -msse -mrelaxed-simd"
+chmod ugo-x "${OUTPUT}/openjpeg.wasm"
+
+build js "${TMP_DIR}/openjpeg.js" "-Oz"
+
+for PATTERN in 'var wasmImports={[^}]*}' 'function assignWasmExports(wasmExports){[^}]*}'
+do
+    EXPECTED=$(grep -o "${PATTERN}" "${OUTPUT}/openjpeg.js" || true)
+    ACTUAL=$(grep -o "${PATTERN}" "${TMP_DIR}/openjpeg.js" || true)
+    if [ -z "${EXPECTED}" ] || [ "${EXPECTED}" != "${ACTUAL}" ]
+    then
+        echo "The wasm and js builds must have the same imports and exports." >&2
+        exit 1
+    fi
+done
+
+echo "Converting the js build to ${OUTPUT}/openjpeg_nowasm_fallback.js..."
+
+"${WASM2JS}" --all-features --emscripten -O "${TMP_DIR}/openjpeg.wasm" \
+    -o "${TMP_DIR}/wasm2js.js"
+{ printf "export default "; cat "${TMP_DIR}/wasm2js.js"; } > "${TMP_DIR}/module.js"
+"${TERSER}" "${TMP_DIR}/module.js" --module --compress --mangle \
+    -o "${OUTPUT}/openjpeg_nowasm_fallback.js"
+
+for OUTPUT_FILE in openjpeg.js openjpeg_nowasm_fallback.js
+do
+    sed -i '1 i\/* THIS FILE IS GENERATED - DO NOT EDIT */' "${OUTPUT}/${OUTPUT_FILE}"
+done
 
 # -s ASSERTIONS=2 -s SAFE_HEAP=1 -s STACK_OVERFLOW_CHECK=2 -O0 -g4 \
