@@ -30,6 +30,7 @@
 #include "openjpeg.h"
 #include "color.h"
 #include "convert.h"
+#include "pixels.h"
 // clang-format on
 
 #define JP2_RFC3745_MAGIC_0 0x0C000000
@@ -44,17 +45,10 @@
 // #define PDFJS_DEBUG
 
 extern void jsPrintWarning(const char *);
-extern void setImageData(OPJ_UINT8 *, OPJ_SIZE_T, OPJ_SIZE_T);
+extern void setImageData(OPJ_INT32 *, OPJ_SIZE_T);
 extern void storeErrorMessage(const char *);
-extern void copy_pixels_1(OPJ_INT32 *, OPJ_SIZE_T);
-extern void copy_pixels_3(OPJ_INT32 *, OPJ_INT32 *, OPJ_INT32 *, OPJ_SIZE_T);
-extern void copy_pixels_4(OPJ_INT32 *, OPJ_INT32 *, OPJ_INT32 *, OPJ_INT32 *,
-                          OPJ_SIZE_T);
 extern void init_pixels(OPJ_SIZE_T);
 extern void copy_component(OPJ_INT32 *, OPJ_UINT32, OPJ_UINT32, OPJ_SIZE_T);
-extern void gray_to_rgba(OPJ_INT32 *, OPJ_SIZE_T);
-extern void graya_to_rgba(OPJ_INT32 *, OPJ_INT32 *, OPJ_SIZE_T);
-extern void rgb_to_rgba(OPJ_INT32 *, OPJ_INT32 *, OPJ_INT32 *, OPJ_SIZE_T);
 
 static void error_callback(const char *msg, void *client_data) {
   (void)client_data;
@@ -332,26 +326,29 @@ int EMSCRIPTEN_KEEPALIVE jp2_decode(OPJ_UINT8 *data, OPJ_SIZE_T data_size,
   }
 
   OPJ_SIZE_T nb_pixels = (OPJ_SIZE_T)width * height;
+  OPJ_INT32 *c0 = image->comps[0].data;
 
   if (convert_to_rgba) {
     if (image->color_space == OPJ_CLRSPC_GRAY) {
-      if (image->numcomps >= 2 && pdf_smaks_in_data) {
-        graya_to_rgba(image->comps[0].data, image->comps[1].data, nb_pixels);
-      } else {
-        gray_to_rgba(image->comps[0].data, nb_pixels);
-      }
+      const OPJ_INT32 *alpha = image->numcomps >= 2 && pdf_smaks_in_data
+                                   ? image->comps[1].data
+                                   : NULL;
+      pack_pixels_4(c0, c0, c0, alpha, nb_pixels);
     } else {
-      rgb_to_rgba(image->comps[0].data, image->comps[1].data,
-                  image->comps[2].data, nb_pixels);
+      pack_pixels_4(c0, image->comps[1].data, image->comps[2].data, NULL,
+                    nb_pixels);
     }
+    setImageData(c0, nb_pixels * 4);
   } else if (numcomps == out_numcomps && numcomps == 1) {
-    copy_pixels_1(image->comps[0].data, nb_pixels);
+    pack_pixels_1(c0, nb_pixels);
+    setImageData(c0, nb_pixels);
   } else if (numcomps == out_numcomps && numcomps == 3) {
-    copy_pixels_3(image->comps[0].data, image->comps[1].data,
-                  image->comps[2].data, nb_pixels);
+    pack_pixels_3(c0, image->comps[1].data, image->comps[2].data, nb_pixels);
+    setImageData(c0, nb_pixels * 3);
   } else if (numcomps == out_numcomps && numcomps == 4) {
-    copy_pixels_4(image->comps[0].data, image->comps[1].data,
-                  image->comps[2].data, image->comps[3].data, nb_pixels);
+    pack_pixels_4(c0, image->comps[1].data, image->comps[2].data,
+                  image->comps[3].data, nb_pixels);
+    setImageData(c0, nb_pixels * 4);
   } else {
     init_pixels(nb_pixels * out_numcomps);
     for (OPJ_UINT32 i = 0; i < numcomps; i++) {

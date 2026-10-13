@@ -57,15 +57,26 @@ done
 build() {
     BUILD_TYPE=$1
     OUTPUT_FILE=$2
-    LDFLAGS=$3
+    CFLAGS=$3
+    LDFLAGS=$4
     OPENJPEG_BUILD="${OPENJPEG}/build_${BUILD_TYPE}"
+    PIXELS_OBJ="${TMP_DIR}/pixels_${BUILD_TYPE}.o"
 
     echo "Building ${BUILD_TYPE} from ${OPENJPEG_BUILD} to ${OUTPUT_FILE}..."
+
+    # No JS imports; compile with SIMD only for Wasm.
+    EM_CACHE="/tmp/em_cache_${BUILD_TYPE}" emcc -c "${INPUT}/pixels.c" \
+        -o "${PIXELS_OBJ}" \
+        -I"${OPENJPEG}/src/lib/openjp2" \
+        -I"${OPENJPEG_BUILD}/src/lib/openjp2" \
+        -DNDEBUG \
+        ${CFLAGS}
 
     # Omit LTO: it increased binary size in the measured builds.
     EM_CACHE="/tmp/em_cache_${BUILD_TYPE}" emcc -o "${OUTPUT_FILE}" \
         "${OPENJPEG_BUILD}/bin/libopenjp2.a" \
         "${OBJ_DIR}"/*.o \
+        "${PIXELS_OBJ}" \
         -s ALLOW_MEMORY_GROWTH=1 \
         -s MAXIMUM_MEMORY=2GB \
         -s MODULARIZE=1 \
@@ -86,10 +97,10 @@ build() {
         --js-library "${INPUT}/myjs.js"
 }
 
-build wasm "${OUTPUT}/openjpeg.js" "-O3"
+build wasm "${OUTPUT}/openjpeg.js" "-O3 -msimd128" "-O3"
 chmod ugo-x "${OUTPUT}/openjpeg.wasm"
 
-build js "${TMP_DIR}/openjpeg.js" "-Oz"
+build js "${TMP_DIR}/openjpeg.js" "-Oz" "-Oz"
 
 for PATTERN in 'var wasmImports={[^}]*}' 'function assignWasmExports(wasmExports){[^}]*}'
 do
