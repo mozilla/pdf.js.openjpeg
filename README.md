@@ -12,6 +12,16 @@ node build.js --compile --output my_output_dir
 
 This builds a Docker image if needed, then writes `openjpeg.js`, `openjpeg.wasm` and `openjpeg_nowasm_fallback.js` to `my_output_dir`.
 
+### Build metadata
+
+`openjpeg.wasm` contains a `build_info` custom section with a JSON object describing the build: the OpenJPEG revision (`openjpeg`), the revision of this repository (`repo`, suffixed with `-dirty` if there were local changes), the Emscripten version (`emscripten`) and the link flags (`flags`). It can be read with:
+
+```js
+const module = await WebAssembly.compile(bytes);
+const [section] = WebAssembly.Module.customSections(module, "build_info");
+const buildInfo = JSON.parse(new TextDecoder().decode(section));
+```
+
 ## Update
 
 In order to update openjpeg to a specific revision, change the commit hash in `Dockerfile` and then run:
