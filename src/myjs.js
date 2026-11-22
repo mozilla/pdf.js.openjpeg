@@ -30,7 +30,7 @@ mergeInto(LibraryManager.library, {
   },
   setImageData(array_ptr, array_size) {
     Module.imageData = new Uint8ClampedArray(
-      HEAPU8.slice(array_ptr, array_ptr + array_size).buffer
+      HEAPU8.slice(array_ptr, array_ptr + array_size).buffer,
     );
   },
   init_pixels(size) {
